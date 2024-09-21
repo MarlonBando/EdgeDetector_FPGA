@@ -1,0 +1,9 @@
+# compile vhdl design source files
+vhdl xil_defaultlib  \
+"../../../../../02203_A1_code/task2/debounce.vhd" \
+"../../../../../02203_A1_code/task2/gcd.vhd" \
+"../../../../../02203_A1_code/task2/gcd_top.vhd" \
+"../../../../../02203_A1_code/task2/gcd_tb.vhd" \
+
+# Do not sort compile order
+nosort

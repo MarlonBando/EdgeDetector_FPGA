@@ -1,0 +1,4 @@
+Time resolution is 1 ps
+Note: Tests succeeded!
+Time: 520 ns  Iteration: 0  Process: /gcd_tb/line__70  File: /home/cma/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/assignment_1/assignment_1.srcs/sources_1/imports/task1/gcd_tb.vhd
+$stop called at time : 520 ns : File "/home/cma/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/assignment_1/assignment_1.srcs/sources_1/imports/task1/gcd_tb.vhd" Line 127

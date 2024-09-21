@@ -26,7 +26,7 @@ end gcd;
 
 architecture fsmd of gcd is
 
-  type state_type is ( ... ); -- Input your own state names
+  type state_type is (idle, load_a, release_btn, load_b, release_btn1, compare, subtract_a, subtract_b, done); -- Input your own state names
 
   signal reg_a, next_reg_a, next_reg_b, reg_b : unsigned(15 downto 0);
 
@@ -42,7 +42,72 @@ begin
 
     case (state) is
 
-        ...< combinatorical body > ...
+        when idle =>
+          if req = '1' then
+            next_state <= load_a;
+          else
+            next_state <= idle;
+            ack <= '0';
+          end if;
+        
+        when load_a =>
+          next_reg_a <= ab;
+          ack <= '1';
+          next_state <= release_btn;
+          
+         when release_btn =>
+           if req = '0' then
+             ack <= '0';
+             next_state <= load_b;
+           else
+             next_state <= release_btn;
+           end if;
+        
+        when load_b =>
+          if req = '1' then 
+            next_reg_b <= ab;
+            --ack <= '1';
+            next_state <= compare;
+          else
+            next_state <= load_b;
+          end if;
+          
+        
+        when release_btn1 =>
+           if req = '0' then
+             ack <= '0';
+             next_state <= compare;
+           else
+             next_state <= release_btn;
+           end if;
+        
+        
+        when compare =>
+          if reg_a = reg_b then
+            next_state <= done;
+          elsif reg_a > reg_b then
+            next_state <= subtract_a;
+          else
+            next_state <= subtract_b;
+          end if;
+        
+        when subtract_a =>
+          next_reg_a <= reg_a - reg_b;
+          next_state <= compare;
+        
+        when subtract_b =>
+          next_reg_b <= reg_b - reg_a;
+          next_state <= compare;
+        
+        when done =>
+          ack <= '1';
+          C <= reg_a;
+          next_state <= idle;
+          
+          
+        
+        when others =>
+          next_state <= idle;
 
     end case;
   end process cl;
@@ -52,7 +117,15 @@ begin
   seq : process (clk, reset)
   begin
 
-    ...< register body >...
+    if reset = '1' then
+      state <= idle;
+      reg_a <= (others => '0');
+      reg_b <= (others => '0');
+    elsif rising_edge(clk) then
+      state <= next_state;
+      reg_a <= next_reg_a;
+      reg_b <= next_reg_b;
+    end if;
 
   end process seq;
 
