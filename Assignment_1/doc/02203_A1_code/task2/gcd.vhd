@@ -26,7 +26,7 @@ end gcd;
 
 architecture fsmd of gcd is
 
-  type state_type is (idle, load_a, release_btn, load_b, release_btn1, compare, subtract_a, subtract_b, done); -- Input your own state names
+  type state_type is (reset_reg, idle, load_a, release_btn, load_b, compare, subtract_a, subtract_b, done); -- Input your own state names
 
   signal reg_a, next_reg_a, next_reg_b, reg_b : unsigned(15 downto 0);
 
@@ -42,12 +42,17 @@ begin
 
     case (state) is
 
+        when reset_reg =>
+          next_reg_a <= (others => '0');
+          next_reg_b <= (others => '0');
+          ack <= '0';
+          next_state <= idle;
+
         when idle =>
           if req = '1' then
             next_state <= load_a;
           else
             next_state <= idle;
-            ack <= '0';
           end if;
         
         when load_a =>
@@ -70,17 +75,7 @@ begin
             next_state <= compare;
           else
             next_state <= load_b;
-          end if;
-          
-        
-        when release_btn1 =>
-           if req = '0' then
-             ack <= '0';
-             next_state <= compare;
-           else
-             next_state <= release_btn;
-           end if;
-        
+          end if;  
         
         when compare =>
           if reg_a = reg_b then
@@ -102,7 +97,7 @@ begin
         when done =>
           ack <= '1';
           C <= reg_a;
-          next_state <= idle;
+          next_state <= reset_reg;
           
           
         
