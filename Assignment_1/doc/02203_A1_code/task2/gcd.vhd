@@ -54,7 +54,7 @@ begin
           end if;
         
         when load_a =>
-          if req = '1' then
+           if req = '1' then
             next_reg_a <= ab;
             ack <= '1';
            else
@@ -68,10 +68,10 @@ begin
            end if;
         
         when load_b =>
-            if req = '1' then
-                next_reg_b <= ab;
-                next_state <= compare;
-            end if;
+          if req = '1' then
+            next_reg_b <= ab;
+            next_state <= compare;
+          end if;
                     
         when compare =>
           -- Corner cases
