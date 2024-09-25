@@ -54,12 +54,12 @@ begin
           end if;
         
         when load_a =>
-           if req = '1' then
+          if req = '1' then
             next_reg_a <= ab;
             ack <= '1';
-           else
+          else
             next_state <= release_btn;
-           end if;
+          end if;
            
          when release_btn =>
            if req = '0' then
