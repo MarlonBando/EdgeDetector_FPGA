@@ -26,7 +26,7 @@ end gcd;
 
 architecture fsmd of gcd is
 
-  type state_type is (idle, load_a, release_btn, load_b, compare, zero_a, subtract_a, subtract_b, done); -- Input your own state names
+  type state_type is (reset_reg, idle, load_a, release_btn, load_b, compare, subtract_a, subtract_b, done); -- Input your own state names
 
   signal reg_a, next_reg_a, next_reg_b, reg_b : unsigned(15 downto 0);
 
@@ -39,54 +39,48 @@ begin
 
   cl : process (req,ab,state,reg_a,reg_b,reset)
   begin
-    -- The assignments before
+    -- Assignments to avoid latch inference
     next_state <= state;
-    next_reg_a <= reg_a;
     next_reg_b <= reg_b;
-    ack <= '0';               
-    C <= reg_a;
+    next_reg_a <= reg_a;
+    ack <= '0';
     
     case (state) is
-        
+    
         when idle =>
           if req = '1' then
             next_state <= load_a;
           end if;
         
-        when load_a =>
-          if req = '1' then
-            next_reg_a <= ab;
-            ack <= '1';
-          else
-            next_state <= release_btn;
+        when load_a =>          
+          next_reg_a <= ab;
+          next_state <= release_btn;
+         
+        when release_btn =>
+          ack <= '1';
+          if req = '0' then
+            ack <= '0';
+            next_state <= load_b;
           end if;
-           
-         when release_btn =>
-           if req = '0' then
-             ack <= '0';
-             next_state <= load_b;
-           end if;
-        
+         
         when load_b =>
-          if req = '1' then
+          if req = '1' then 
             next_reg_b <= ab;
             next_state <= compare;
           end if;
-                    
+        
         when compare =>
-          -- Corner cases
-          -- gcd(a, 0) = gcd(0, a) = |a|
-          -- gcd(0, 0) = 0
-          if reg_a = reg_b then
-            next_state <= done;
-          elsif reg_a = 0 then
+          if reg_a = 0 then
             next_reg_a <= reg_b;
             next_state <= done;
+          -- We always assign reg_a to C when done
           elsif reg_b = 0 then
+            next_state <= done;
+          elsif reg_a = reg_b then
             next_state <= done;
           elsif reg_a > reg_b then
             next_state <= subtract_a;
-          elsif reg_a < reg_b then
+          else
             next_state <= subtract_b;
           end if;
         
@@ -97,12 +91,12 @@ begin
         when subtract_b =>
           next_reg_b <= reg_b - reg_a;
           next_state <= compare;
-          
+        
         when done =>
           ack <= '1';
           C <= reg_a;
           next_state <= idle;
-        
+          
         when others =>
           next_state <= idle;
 
