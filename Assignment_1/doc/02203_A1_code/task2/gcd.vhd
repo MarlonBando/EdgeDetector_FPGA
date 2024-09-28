@@ -22,7 +22,7 @@ end gcd;
 architecture fsmd of gcd is
 
   -- Define the state machine states
-  type state_type is (reset_reg, idle, load_a, load_b, compare, subtract_a, subtract_b, done);
+  type state_type is (idle, load_a, load_b, compare, subtract_a, subtract_b, done);
 
   signal reg_a, next_reg_a, next_reg_b, reg_b : unsigned(15 downto 0);
   signal state, next_state : state_type;
@@ -38,7 +38,8 @@ begin
     next_reg_b <= reg_b;
     next_reg_a <= reg_a;
     ack <= '0';  
-    
+    C <= reg_b;
+
     case (state) is
     
         when idle =>
@@ -50,7 +51,7 @@ begin
           next_reg_a <= AB;               
           ack <= '1';                     
           if req = '0' then               
-            ack <= '0';
+            ack <= '0';                   
             next_state <= load_b;
           end if;
          
@@ -85,7 +86,10 @@ begin
         when done =>
           ack <= '1';                      
           C <= reg_a;                      
-          next_state <= idle;
+          if req = '0' then                
+            ack <= '0';                    
+            next_state <= idle;
+          end if;
           
         when others =>
           next_state <= idle;
