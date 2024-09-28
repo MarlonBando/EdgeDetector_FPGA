@@ -1,0 +1,14 @@
+#-----------------------------------------------------------
+# Vivado v2023.1 (64-bit)
+# SW Build 3865809 on Sun May  7 15:04:56 MDT 2023
+# IP Build 3864474 on Sun May  7 20:36:21 MDT 2023
+# SharedData Build 3865790 on Sun May 07 13:33:03 MDT 2023
+# Start of session at: Thu Sep 26 11:13:54 2024
+# Process ID: 25258
+# Current directory: /home/cma/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/task2/task2.runs/impl_1
+# Command line: vivado -log gcd_top.vdi -applog -product Vivado -messageDb vivado.pb -mode batch -source gcd_top.tcl -notrace
+# Log file: /home/cma/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/task2/task2.runs/impl_1/gcd_top.vdi
+# Journal file: /home/cma/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/task2/task2.runs/impl_1/vivado.jou
+# Running On: cma-81nh, OS: Linux, CPU Frequency: 2461.620 MHz, CPU Physical cores: 8, Host memory: 10359 MB
+#-----------------------------------------------------------
+source gcd_top.tcl -notrace
