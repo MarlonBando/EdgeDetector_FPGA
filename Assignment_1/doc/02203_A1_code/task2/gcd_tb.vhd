@@ -69,13 +69,13 @@ begin
 	-- Process to provide test input to the entity in the testbench
 	process
 
-		constant N_OPS : natural := 5;
+		constant N_OPS : natural := 8;
 
 		type t_ops is array (0 to N_OPS-1) of natural;
 		-- Change numbers here if you what to run different tests
-		variable a_ops     : t_ops := (91, 32768, 49, 29232, 25);
-		variable b_ops     : t_ops := (63, 272, 98, 488, 5);
-		variable c_results : t_ops := (7, 16, 49, 8, 5);
+		variable a_ops     : t_ops := (91, 32768, 49, 29232, 25, 0, 0, 5);
+		variable b_ops     : t_ops := (63, 272, 98, 488, 5, 0, 5, 0);
+		variable c_results : t_ops := (7, 16, 49, 8, 5, 0, 5, 5);
 	begin
 
 		-- Reset entity for some clock cycles
