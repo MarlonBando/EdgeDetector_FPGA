@@ -1,0 +1,7 @@
+Time resolution is 1 ps
+Note: Tests succeeded!
+Time: 10480 ns  Iteration: 0  Process: /gcd_tb/line__70  File: /home/chris/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/02203_A1_code/task2/gcd_tb.vhd
+$stop called at time : 10480 ns : File "/home/chris/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/02203_A1_code/task2/gcd_tb.vhd" Line 127
+Note: Tests succeeded!
+Time: 10480 ns  Iteration: 0  Process: /gcd_tb/line__70  File: /home/chris/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/02203_A1_code/task2/gcd_tb.vhd
+$stop called at time : 10480 ns : File "/home/chris/Dropbox/Masters/Design of Digital Systems/Assignments/DigitalSystem/Assignment_1/doc/02203_A1_code/task2/gcd_tb.vhd" Line 127
