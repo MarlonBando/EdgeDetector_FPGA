@@ -20,18 +20,19 @@ architecture fsmd of gcd is
 
   signal reg_a, next_reg_a, next_reg_b, reg_b : unsigned(15 downto 0);
   signal state, next_state : state_type;
-  signal subtract_a_flag : std_logic;  -- Flag to indicate whether to subtract reg_b from reg_a or vice versa
+  signal subtract_flag, next_subtract_flag : std_logic;  -- Flag and next flag for subtraction logic
 
 begin
 
   -- Combinatorial logic
-  cl : process (req, AB, state, reg_a, reg_b, next_reg_a, next_reg_b, subtract_a_flag, reset)
+  cl : process (req, AB, state, reg_a, reg_b, next_reg_a, next_reg_b, subtract_flag, reset)
   begin
-    -- Assignments to avoid latch inference
+    -- Default assignments
     next_state <= state;
     next_reg_b <= reg_b;
     next_reg_a <= reg_a;
     ack <= '0';  
+    next_subtract_flag <= subtract_flag;  
     C <= reg_b;
 
     case (state) is
@@ -64,18 +65,18 @@ begin
           elsif reg_a = reg_b then
             next_state <= done;           
           elsif reg_a > reg_b then
-            subtract_a_flag <= '1';       -- Set flag to subtract reg_b from reg_a
+            next_subtract_flag <= '1';  
             next_state <= subtract;
           else
-            subtract_a_flag <= '0';       -- Set flag to subtract reg_a from reg_b
+            next_subtract_flag <= '0';  
             next_state <= subtract;
           end if;
         
         when subtract =>
-          if subtract_a_flag = '1' then
-            next_reg_a <= reg_a - reg_b;  -- Subtract reg_b from reg_a
+          if subtract_flag = '1' then
+            next_reg_a <= reg_a - reg_b;  
           else
-            next_reg_b <= reg_b - reg_a;  -- Subtract reg_a from reg_b
+            next_reg_b <= reg_b - reg_a;  
           end if;
           next_state <= compare;
         
@@ -93,17 +94,19 @@ begin
     end case;
   end process cl;
 
-  -- Sequential process to update registers
+  -- Sequential process to update registers and subtract_flag
   seq : process (clk, reset)
   begin
     if reset = '1' then
       state <= idle;                      
       reg_a <= (others => '0');           
       reg_b <= (others => '0');           
+      subtract_flag <= '0';               
     elsif rising_edge(clk) then
       state <= next_state;                
       reg_a <= next_reg_a;                
       reg_b <= next_reg_b;                
+      subtract_flag <= next_subtract_flag; 
     end if;
   end process seq;
 
