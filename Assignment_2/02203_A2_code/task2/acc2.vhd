@@ -45,18 +45,67 @@ end acc;
 architecture rtl of acc is
 
 -- All internal signals are defined here
+    type state_type is (idle, read, write,invert, increment_addr, done);
+    signal reg_addr, next_reg_addr, data_r, data_w, next_data_r, next_data_w : word_t;
+    signal state, next_state : state_type;
 
 begin
 
+    cl : process(start, state, next_state, reg_addr, next_reg_addr, data_r, data_w, next_data_r, next_data_w)
+    begin
+        next_state <= state;
+        next_reg_addr <= reg_addr;
+        next_data_r <= data_r;
+        next_data_w <= data_w;
+        en <= '0';
+        we <= '0';
+
+
+        case(state) is
+
+            when idle =>
+                if start = ´1' then
+                    next_state <= read;
+                end if;
+
+            when read =>
+                en <= '1';
+                next_data_r <= dataR;
+                
+
+            when invert =>
+                    
+
+            when write =>
+
+            when done =>
+            
+
+
+
+        end case;
+
+            
+    end process cl;
+
+
 -- Template for a process
---    myprocess : process(clk)
---        if rising_edge(clk) then
---            if reset = '1' then
---                -- Registers reset
---            else
---                -- Registers update
---            end if;
---        end if;
---    end process myprocess;
+   seq : process(clk, reset)
+   begin
+       if rising_edge(clk) then
+           if reset = '1' then
+                state <= idle;
+                reg_addr <= (others => '0');
+                data_r <= (others => '0');
+                data_w <= (others => '0');
+           else
+                state <= next_state;
+                reg_addr <= next_reg_addr;
+                data_r <= next_data_r;
+                data_w <= next_data_w;
+
+           end if;
+       end if;
+   end process seq;
 
 end rtl;
