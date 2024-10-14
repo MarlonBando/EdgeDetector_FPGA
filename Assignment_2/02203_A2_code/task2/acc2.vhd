@@ -45,9 +45,10 @@ end acc;
 architecture rtl of acc is
 
 -- All internal signals are defined here
-    type state_type is (idle, read, write,invert, increment_addr, done);
+    type state_type is (idle, read, write, invert, increment_addr, done);
     signal reg_addr, next_reg_addr, data_r, data_w, next_data_r, next_data_w : word_t;
     signal state, next_state : state_type;
+    signal next_byte,current_byte : std_logic_vector(1 downto 0)
 
 begin
 
@@ -57,26 +58,59 @@ begin
         next_reg_addr <= reg_addr;
         next_data_r <= data_r;
         next_data_w <= data_w;
+        next_byte <= current_byte;
         en <= '0';
         we <= '0';
 
 
-        case(state) is
+        case state is
 
             when idle =>
-                if start = ´1' then
+                if start = '1' then
                     next_state <= read;
                 end if;
 
             when read =>
                 en <= '1';
                 next_data_r <= dataR;
-                
+                next_state <= invert;
 
             when invert =>
-                    
+                case current_byte is
+                    when "00" => 
+                        next_byte <= "01";
+                        next_data_w <= data_w + (255 - dataR(31 downto 24));
+                        next_state <= shift;
+                    when "01" => 
+                        next_byte <= "10";
+                        next_data_w <= data_w + (255 - dataR(23 downto 16));
+                        next_state <= shift;
+                    when "10" => 
+                        next_byte <= "11";
+                        next_data_w <= data_w + (255 - dataR(15 downto 8));
+                        next_state <= shift;
+                    when "11" => 
+                        next_byte <= "00";
+                        next_data_w <= data_w + (255 - dataR(7 downto 0));
+                        next_state <= write;
+                    when others => 
+                        next_byte <= "00";
+                        next_data_w <= (others => '0')
+                        next_state <= idle;
+                end case;
+                
+            
+            when shift =>
+                next_data_w <= data_w sll 8
+                next_state <= invert
 
             when write =>
+                en <= '1';
+                we <= '1';
+                next_reg_addr <= reg_addr + 1
+                next_state <= read
+                next_data_w <= (others => '0')
+                -- TODO: check last register and move to done
 
             when done =>
             
@@ -90,7 +124,7 @@ begin
 
 
 -- Template for a process
-   seq : process(clk, reset)
+   seq : process(clk)
    begin
        if rising_edge(clk) then
            if reset = '1' then
@@ -103,6 +137,7 @@ begin
                 reg_addr <= next_reg_addr;
                 data_r <= next_data_r;
                 data_w <= next_data_w;
+                current_byte <= next_byte
 
            end if;
        end if;
