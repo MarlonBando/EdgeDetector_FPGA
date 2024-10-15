@@ -2,7 +2,8 @@
 --
 --  Title      :  Edge-Detection design project - task 2.
 --             :
---  Developers :  YOUR NAME HERE - s??????@student.dtu.dk
+--  Developers :  Michele Bandini - s243121@student.dtu.dk
+--             :  YOUR NAME HERE - s??????@student.dtu.dk
 --             :  YOUR NAME HERE - s??????@student.dtu.dk
 --             :
 --  Purpose    :  This design contains an entity for the accelerator that must be build
@@ -48,7 +49,7 @@ architecture rtl of acc is
     type state_type is (idle, read, write, invert, increment_addr, done);
     signal reg_addr, next_reg_addr, data_r, data_w, next_data_r, next_data_w : word_t;
     signal state, next_state : state_type;
-    signal next_byte,current_byte : std_logic_vector(1 downto 0)
+    signal next_byte,current_byte : std_logic_vector(1 downto 0);
 
 begin
 
@@ -95,21 +96,21 @@ begin
                         next_state <= write;
                     when others => 
                         next_byte <= "00";
-                        next_data_w <= (others => '0')
+                        next_data_w <= (others => '0');
                         next_state <= idle;
                 end case;
                 
             
             when shift =>
-                next_data_w <= data_w sll 8
-                next_state <= invert
+                next_data_w <= data_w sll 8;
+                next_state <= invert;
 
             when write =>
                 en <= '1';
                 we <= '1';
-                next_reg_addr <= reg_addr + 1
-                next_state <= read
-                next_data_w <= (others => '0')
+                next_reg_addr <= reg_addr + 1;
+                next_state <= read;
+                next_data_w <= (others => '0');
                 -- TODO: check last register and move to done
 
             when done =>
@@ -137,7 +138,7 @@ begin
                 reg_addr <= next_reg_addr;
                 data_r <= next_data_r;
                 data_w <= next_data_w;
-                current_byte <= next_byte
+                current_byte <= next_byte;
 
            end if;
        end if;
