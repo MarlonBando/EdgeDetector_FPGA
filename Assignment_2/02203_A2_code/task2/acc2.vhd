@@ -3,8 +3,8 @@
 --  Title      :  Edge-Detection design project - task 2.
 --             :
 --  Developers :  Michele Bandini - s243121@student.dtu.dk
---             :  YOUR NAME HERE - s??????@student.dtu.dk
---             :  YOUR NAME HERE - s??????@student.dtu.dk
+--             :  Myrsini Gkolemi - s233091@student.dtu.dk
+--             :  Christopher Mardones-Andersen - s205119@student.dtu.dk
 --             :
 --  Purpose    :  This design contains an entity for the accelerator that must be build
 --             :  in task two of the Edge Detection design project. It contains an
@@ -26,6 +26,9 @@ use IEEE.numeric_std.all;
 use work.types.all;
 
 entity acc is
+    generic(
+        MAX_ADDR : unsigned := 25343
+    );
     port(
         clk    : in  bit_t;             -- The clock.
         reset  : in  bit_t;             -- The reset signal. Active high.
@@ -46,24 +49,23 @@ end acc;
 architecture rtl of acc is
 
 -- All internal signals are defined here
-    type state_type is (idle, read, write, invert, increment_addr, done);
-    signal reg_addr, next_reg_addr, data_r, data_w, next_data_r, next_data_w : word_t;
+    type state_type is (idle, read, write, invert, done);
+    signal data_r, data_w, next_data_r, next_data_w : word_t;
+    signal next_reg_addr, reg_addr : halfword_t;
     signal state, next_state : state_type;
-    signal next_byte,current_byte : std_logic_vector(1 downto 0);
 
 begin
 
-    cl : process(start, state, next_state, reg_addr, next_reg_addr, data_r, data_w, next_data_r, next_data_w)
+    cl : process(start, state, next_state, next_reg_addr, data_r, data_w, next_data_r, next_data_w)
     begin
         next_state <= state;
         next_reg_addr <= reg_addr;
         next_data_r <= data_r;
         next_data_w <= data_w;
-        next_byte <= current_byte;
         en <= '0';
         we <= '0';
-
-
+        
+        
         case state is
 
             when idle =>
@@ -75,48 +77,32 @@ begin
                 en <= '1';
                 next_data_r <= dataR;
                 next_state <= invert;
-
-            when invert =>
-                case current_byte is
-                    when "00" => 
-                        next_byte <= "01";
-                        next_data_w <= data_w + (255 - dataR(31 downto 24));
-                        next_state <= shift;
-                    when "01" => 
-                        next_byte <= "10";
-                        next_data_w <= data_w + (255 - dataR(23 downto 16));
-                        next_state <= shift;
-                    when "10" => 
-                        next_byte <= "11";
-                        next_data_w <= data_w + (255 - dataR(15 downto 8));
-                        next_state <= shift;
-                    when "11" => 
-                        next_byte <= "00";
-                        next_data_w <= data_w + (255 - dataR(7 downto 0));
-                        next_state <= write;
-                    when others => 
-                        next_byte <= "00";
-                        next_data_w <= (others => '0');
-                        next_state <= idle;
-                end case;
-                
+                addr <= next_reg_addr;
+           
             
-            when shift =>
-                next_data_w <= data_w sll 8;
-                next_state <= invert;
+            when invert =>
+                next_data_w <=  std_logic_vector(255 - unsigned(dataR(31 downto 24))) & 
+                                std_logic_vector(255 - unsigned(dataR(23 downto 16))) & 
+                                std_logic_vector(255 - unsigned(dataR(15 downto 8)))  &
+                                std_logic_vector(255 - unsigned(dataR( 7 downto 0)));
 
             when write =>
                 en <= '1';
                 we <= '1';
-                next_reg_addr <= reg_addr + 1;
-                next_state <= read;
+                next_reg_addr <= halfword_t(unsigned(next_reg_addr) + 1);
+                -- TODO: write in the second block of the memory, addr + MAX_ADDR
                 next_data_w <= (others => '0');
-                -- TODO: check last register and move to done
-
+                next_state <= read;
+                addr <= reg_addr + MAX_ADDR;
+                
+                if (unsigned(MAX_ADDR) - unsigned(reg_addr) = 0) then
+                    next_state <= done;
+                else
+                    next_state <= read;
+                end if;
+                
+                
             when done =>
-            
-
-
 
         end case;
 
@@ -138,7 +124,6 @@ begin
                 reg_addr <= next_reg_addr;
                 data_r <= next_data_r;
                 data_w <= next_data_w;
-                current_byte <= next_byte;
 
            end if;
        end if;
