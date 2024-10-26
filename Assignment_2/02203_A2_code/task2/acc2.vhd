@@ -64,6 +64,7 @@ begin
         en <= '0';
         we <= '0';
         addr <= reg_addr;
+        dataW <= data_w;
         
         
         case state is
@@ -76,21 +77,20 @@ begin
             when read =>
                 en <= '1';
                 next_state <= invert;
-           
             
             when invert =>
                 next_data_w <=  std_logic_vector(255 - unsigned(dataR(31 downto 24))) & 
                                 std_logic_vector(255 - unsigned(dataR(23 downto 16))) & 
                                 std_logic_vector(255 - unsigned(dataR(15 downto 8)))  &
                                 std_logic_vector(255 - unsigned(dataR( 7 downto 0)));
+                next_state <= write;
 
             when write =>
                 en <= '1';
                 we <= '1';
-                next_reg_addr <= halfword_t(unsigned(next_reg_addr) + 1);
-                addr <= halfword_t(unsigned(reg_addr) + MAX_ADDR);
-                next_data_w <= (others => '0');
+                next_reg_addr <= halfword_t(unsigned(reg_addr) + 1);
                 next_state <= read;
+                addr <= halfword_t(unsigned(reg_addr) + MAX_ADDR);
                 
                 
                 if (MAX_ADDR - unsigned(reg_addr) = 0) then
