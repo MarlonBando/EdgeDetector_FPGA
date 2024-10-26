@@ -27,7 +27,7 @@ use work.types.all;
 
 entity acc is
     generic(
-        MAX_ADDR : unsigned := 25343
+        MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25343, 16)
     );
     port(
         clk    : in  bit_t;             -- The clock.
@@ -50,20 +50,20 @@ architecture rtl of acc is
 
 -- All internal signals are defined here
     type state_type is (idle, read, write, invert, done);
-    signal data_r, data_w, next_data_r, next_data_w : word_t;
+    signal data_r, data_w, next_data_w : word_t;
     signal next_reg_addr, reg_addr : halfword_t;
     signal state, next_state : state_type;
 
 begin
 
-    cl : process(start, state, next_state, next_reg_addr, data_r, data_w, next_data_r, next_data_w)
+    cl : process(start, state, next_state, next_reg_addr, data_r, data_w, next_data_w)
     begin
         next_state <= state;
         next_reg_addr <= reg_addr;
-        next_data_r <= data_r;
         next_data_w <= data_w;
         en <= '0';
         we <= '0';
+        addr <= reg_addr;
         
         
         case state is
@@ -75,9 +75,7 @@ begin
 
             when read =>
                 en <= '1';
-                next_data_r <= dataR;
                 next_state <= invert;
-                addr <= next_reg_addr;
            
             
             when invert =>
@@ -90,20 +88,21 @@ begin
                 en <= '1';
                 we <= '1';
                 next_reg_addr <= halfword_t(unsigned(next_reg_addr) + 1);
-                -- TODO: write in the second block of the memory, addr + MAX_ADDR
+                addr <= halfword_t(unsigned(reg_addr) + MAX_ADDR);
                 next_data_w <= (others => '0');
                 next_state <= read;
-                addr <= reg_addr + MAX_ADDR;
                 
-                if (unsigned(MAX_ADDR) - unsigned(reg_addr) = 0) then
-                    next_state <= done;
+                
+                if (MAX_ADDR - unsigned(reg_addr) = 0) then
+                    finish <= '1';
+                    next_state <= idle;
                 else
                     next_state <= read;
                 end if;
-                
-                
-            when done =>
 
+            when others =>
+                next_state <= idle;
+            
         end case;
 
             
@@ -122,7 +121,6 @@ begin
            else
                 state <= next_state;
                 reg_addr <= next_reg_addr;
-                data_r <= next_data_r;
                 data_w <= next_data_w;
 
            end if;
