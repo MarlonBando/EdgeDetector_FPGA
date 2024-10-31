@@ -1,0 +1,3 @@
+Optimization notes:
+
+Stop reading from memory when we are finished reading the image, not when we reach the last addr in the memory
