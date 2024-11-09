@@ -28,6 +28,8 @@ use work.types.all;
 entity acc is
     generic(
         MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25343, 16)
+        IMG_WIDTH : unsigned(15 downto 0) := to_unsigned(352, 16)
+        IMG_HEIGHT : unsigned(15 downto 0) := to_unsigned(352, 16)
     );
     port(
         clk    : in  bit_t;             -- The clock.
@@ -49,10 +51,30 @@ end acc;
 architecture rtl of acc is
 
 -- All internal signals are defined here
-    type state_type is (idle, read, write, invert, done);
+    type state_type is (idle, read_1, read_2, read_3, compute_and_write);
     signal data_r, data_w, next_data_w : word_t;
     signal next_reg_addr, reg_addr : halfword_t;
     signal state, next_state : state_type;
+
+    signal matrix_first_word, matrix_second_word, matrix_third_word : word_t;
+    signal matrix_first_word_addr, matrix_second_word_addr, matrix_third_word_addr : word_t;
+    signal first_half_word, second_half_word,third_half_word : halfword_t;
+    signal first_read : bit_t;
+
+    signal cursor_x, cursor_y : halfword_t;
+    signal next_cursor_x, next_cursor_y : rsor_y : halfword_t;alfword_t;
+
+    -- Registers to store pixel data for convolution operations
+    signal b_00_r1, b_00_r2, b_00_r3,  b_01_r1, b_01_r2, b_01_r3 : word_t;    
+    signal b_10_r1, b_10_r2, b_10_r3,  b_11_r1, b_11_r2, b_11_r3 : word_t;
+
+    signal next_counter, counter : unsigned(0 to 3);
+
+    -- Sobel operator matrices (coefficients stored in ROM or hardcoded in logic)
+    constant sobel_x : array(0 to 2, 0 to 2) of integer := ((-1, 0, 1), (-2, 0, 2), (-1, 0, 1));
+    constant sobel_y : array(0 to 2, 0 to 2) of integer := ((-1, -2, -1), (0, 0, 0), (1, 2, 1));
+
+
 
 begin
 
@@ -61,41 +83,229 @@ begin
         next_state <= state;
         next_reg_addr <= reg_addr;
         next_data_w <= data_w;
+
         en <= '0';
         we <= '0';
-        addr <= reg_addr;
+        addr <= cursor_x + cursor_y;
         dataW <= data_w;
+
+        next_cursor_x <= cursor_x;
+        next_cursor_y <= cursor_y;
+        next_counter <= counter;
+
+
         
         
         case state is
 
             when idle =>
                 if start = '1' then
-                    next_state <= read;
+                    next_state <= read_1;
+                    matrix_first_word_addr 
                 end if;
-
+            
             when read =>
-                en <= '1';
-                next_state <= write;
+                en <= 1;
+                case counter is
+                    when '0000' =>
+                        next_cursor_x <= cursor_x + 1;
+                        next_counter <= counter + 1;
 
-            when write =>
+                    when '0001' =>
+                        next_cursor_y <= cursor_y + IMG_WIDTH;
+                        b_00_r1 <= dataR;
+                        next_counter <= counter + 1;
+                        
+                    when '0010' =>
+                        next_cursor_x <= cursor_x + 1;
+                        b_01_r1 <= dataR;
+                        next_counter <= counter + 1;
+                    
+                    when '0011' =>
+                        next_cursor_y <= cursor_y + IMG_WIDTH;
+                        b_00_r2 <= dataR;
+                        next_counter <= counter + 1;
+                    
+                    when '0100' =>
+                        next_cursor_x <= cursor_x + 1;
+                        b_01_r2 <= dataR;
+                        next_counter <= counter + 1;
+                    
+                    when '0101' =>
+                        next_cursor_y <= cursor_y + IMG_WIDTH;
+                        b_00_r3 <= dataR;
+                        next_counter <= counter + 1;
+
+                    when '0110' =>
+                        next_cursor_x <= cursor_x + 1;
+                        b_01_r3 <= dataR;
+                        next_counter <= counter + 1;
+
+                    when '0111' =>
+                        next_cursor_y <= cursor_y + IMG_WIDTH;
+                        b_10_r1 <= dataR;
+                        next_counter <= counter + 1;
+
+                    when '1000' =>
+                        next_cursor_x <= cursor_x + 1;
+                        b_11_r1 <= dataR;
+                        next_counter <= '0000';
+                        next_state <= compute_and_write;
+                    
+                    when '1001' =>
+                        next_cursor_y <= cursor_y + IMG_WIDTH;
+                        b_10_r2 <= dataR;
+                        next_counter <= counter + 1;
+
+                    when '1010' =>
+                        next_cursor_x <= cursor_x + 1;
+                        b_11_r2 <= dataR;
+                        next_counter <= counter + 1;
+
+                    when '1011' =>
+                        next_cursor_y <= cursor_y + IMG_WIDTH;
+                        b_10_r3 <= dataR;
+                        next_counter <= counter + 1;
+
+                    when '1100' =>
+                        next_cursor_x <= cursor_x + 1;
+                        b_11_r3 <= dataR;
+                        next_state <= compute_and_write
+                    
+                    when others =>
+                        next_state <= idle;
+                end case;    
+            
+            when compute_and_write =>
+                -- Perform convolution with Sobel operator
+                -- Multiply the 3x3 neighborhood of pixels with sobel_x and sobel_y
+                -- Sum the results to get the gradient in x and y directions
+                -- Compute the magnitude of the gradient and write it to the memory
+
+                -- Example of convolution operation (simplified):
+                -- gradient_x <= sobel_x(0,0) * b_00_r1 + sobel_x(0,1) * b_00_r2 + sobel_x(0,2) * b_00_r3 +
+                --               sobel_x(1,0) * b_01_r1 + sobel_x(1,1) * b_01_r2 + sobel_x(1,2) * b_01_r3 +
+                --               sobel_x(2,0) * b_10_r1 + sobel_x(2,1) * b_10_r2 + sobel_x(2,2) * b_10_r3;
+                -- gradient_y <= sobel_y(0,0) * b_00_r1 + sobel_y(0,1) * b_00_r2 + sobel_y(0,2) * b_00_r3 +
+                --               sobel_y(1,0) * b_01_r1 + sobel_y(1,1) * b_01_r2 + sobel_y(1,2) * b_01_r3 +
+                --               sobel_y(2,0) * b_10_r1 + sobel_y(2,1) * b_10_r2 + sobel_y(2,2) * b_10_r3;
+                -- magnitude <= sqrt(gradient_x * gradient_x + gradient_y * gradient_y);
+
+                -- Write the magnitude to the memory
+                -- dataW <= magnitude;
+
+
+                -- Write enable and address setup
                 en <= '1';
                 we <= '1';
+
+                b_00_r2(15 downto 8) <= abs(
+                    (
+                        b_00_r1(7  downto 0)   * sobel_x(0,0) + 
+                        b_00_r1(23 downto 16)  * sobel_x(0,2) +
+                        b_00_r2(7  downto 0)   * sobel_x(1,0) + 
+                        b_00_r2(23 downto 16)  * sobel_x(1,2) +
+                        b_00_r3(7  downto 0)   * sobel_x(2,0) + 
+                        b_00_r3(23 downto 16)  * sobel_x(2,2)
+                    ) +
+                    (
+                        b_00_r1(7  downto 0)   * sobel_y(0,0) + 
+                        b_00_r3(7  downto 0)   * sobel_y(2,0) +
+                        b_00_r1(15 downto 8)   * sobel_y(0,1) + 
+                        b_00_r3(15 downto 8)   * sobel_y(2,1) +
+                        b_00_r1(23 downto 16)  * sobel_y(0,2) + 
+                        b_00_r3(23 downto 16)  * sobel_y(2,2)
+                    )
+                );
+
+                b_00_r2(23 downto 16) <= abs(
+                    (
+                        b_00_r1(15  downto 8)   * sobel_x(0,0) + 
+                        b_00_r1(31 downto 24)   * sobel_x(0,2) +
+                        b_00_r2(15  downto 8)   * sobel_x(1,0) + 
+                        b_00_r2(31 downto 24)   * sobel_x(1,2) +
+                        b_00_r3(15  downto 8)   * sobel_x(2,0) + 
+                        b_00_r3(31 downto 24)   * sobel_x(2,2)
+                    ) +
+                    (
+                        b_00_r1(15  downto 8)   * sobel_y(0,0) + 
+                        b_00_r3(15  downto 8)   * sobel_y(2,0) +
+                        b_00_r1(23 downto 16)   * sobel_y(0,1) + 
+                        b_00_r3(23 downto 16)   * sobel_y(2,1) +
+                        b_00_r1(31 downto 24)   * sobel_y(0,2) + 
+                        b_00_r3(31 downto 24)   * sobel_y(2,2)
+                    )
+                );
+
+                b_00_r3(15 downto 8) <= abs(
+                    (
+                        b_00_r2(7  downto 0)   * sobel_x(0,0) + 
+                        b_00_r2(23 downto 16)  * sobel_x(0,2) +
+                        b_00_r3(7  downto 0)   * sobel_x(1,0) + 
+                        b_00_r3(23 downto 16)  * sobel_x(1,2) +
+                        b_10_r1(7  downto 0)   * sobel_x(2,0) + 
+                        b_10_r1(23 downto 16)  * sobel_x(2,2)
+                    ) +
+                    (
+                        b_00_r2(7  downto 0)   * sobel_y(0,0) + 
+                        b_10_r1(7  downto 0)   * sobel_y(2,0) +
+                        b_00_r2(15 downto 8)   * sobel_y(0,1) + 
+                        b_10_r1(15 downto 8)   * sobel_y(2,1) +
+                        b_00_r2(23 downto 16)  * sobel_y(0,2) + 
+                        b_10_r1(23 downto 16)  * sobel_y(2,2)
+                    )
+                );
+
+                b_00_r3(23 downto 16) <= abs(
+                    (
+                        b_00_r1(15  downto 8)   * sobel_x(0,0) + 
+                        b_00_r1(31 downto 24)  * sobel_x(0,2) +
+                        b_00_r2(15  downto 8)  * sobel_x(1,0) + 
+                        b_00_r2(31 downto 24) * sobel_x(1,2) +
+                        b_00_r3(15  downto 8)  * sobel_x(2,0) + 
+                        b_00_r3(31 downto 24)  * sobel_x(2,2)
+                    ) +
+                    (
+                        b_00_r1(15  downto 8)   * sobel_y(0,0) + 
+                        b_00_r3(15  downto 8)   * sobel_y(2,0) +
+                        b_00_r1(23 downto 16)   * sobel_y(0,1) + 
+                        b_00_r3(23 downto 16)   * sobel_y(2,1) +
+                        b_00_r1(31 downto 24)  * sobel_y(0,2) + 
+                        b_00_r3(31 downto 24)  * sobel_y(2,2)
+                    )
+                );
+
+                b_10_r1(15 downto 8) <= abs(
+                    (
+                        b_00_r3(7  downto 0)   * sobel_x(0,0) + 
+                        b_00_r3(23 downto 16)  * sobel_x(0,3) +
+                        b_10_r1(7  downto 0)   * sobel_x(1,0) + 
+                        b_10_r1(23 downto 16)  * sobel_x(1,3) +
+                        b_10_r2(7  downto 0)   * sobel_x(2,0) + 
+                        b_10_r2(23 downto 16)  * sobel_x(2,3)
+                    ) +
+                    (
+                        b_00_r3(7  downto 0)   * sobel_y(0,0) + 
+                        b_10_r2(7  downto 0)   * sobel_y(0,3) +
+                        b_00_r3(15 downto 8)   * sobel_y(1,0) + 
+                        b_10_r2(15 downto 8)   * sobel_y(1,3) +
+                        b_00_r3(23 downto 16)  * sobel_y(2,0) + 
+                        b_10_r2(23 downto 16)  * sobel_y(2,3)
+                    )
+                );
+
                 
-                next_data_w <=  std_logic_vector(255 - unsigned(dataR(31 downto 24))) & 
-                                std_logic_vector(255 - unsigned(dataR(23 downto 16))) & 
-                                std_logic_vector(255 - unsigned(dataR(15 downto 8)))  &
-                                std_logic_vector(255 - unsigned(dataR( 7 downto 0)));
+
                 
-                next_reg_addr <= halfword_t(unsigned(reg_addr) + 1);
-                next_state <= read;
-                addr <= halfword_t(unsigned(reg_addr) + MAX_ADDR);
+
+
                 
-                
-                if (MAX_ADDR - unsigned(reg_addr) = 0) then
-                    finish <= '1';
-                    next_state <= idle;
-                end if;
+
+
+                next_data_w(15 downto 8) <= std_logic_vector(magnitude(7 downto 0));
+
+                -- Similar calculations needed for pixels (3,2) and (3,3) using b_10_rx and b_11_rx registers
+                next_state <= idle;
 
             when others =>
                 next_state <= idle;
@@ -115,11 +325,18 @@ begin
                 reg_addr <= (others => '0');
                 data_r <= (others => '0');
                 data_w <= (others => '0');
+
+                cursor_x <= (others => '0');
+                cursor_y <= (others => '0');
+
+                read_all <= '0';
            else
                 state <= next_state;
                 reg_addr <= next_reg_addr;
                 data_w <= next_data_w;
 
+                cursor_x <= next_cursor_x;
+                cursor_y <= next_cursor_y;
            end if;
        end if;
    end process seq;
