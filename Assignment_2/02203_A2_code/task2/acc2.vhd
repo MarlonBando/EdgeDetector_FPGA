@@ -51,150 +51,293 @@ end acc;
 architecture rtl of acc is
 
     -- All internal signals are defined here
-    type state_type is (idle, read_R0, read_R1, read_R2, write, compute_edge, compute_edge_RP, done);
-    type pixel_matrix_type is array (0 to 2, 0 to 3) of std_logic_vector(7 downto 0);
+    type state_type is (idle, read_R0, read_R1, read_R2, write, compute_edge_FH, compute_edge_SH, shift_matrix, done);
+    type pixel_matrix_type is array (0 to 2, 0 to 5) of std_logic_vector(7 downto 0);
+    type computed_pixels_type is array (0 to 3) of std_logic_vector(7 downto 0);
 
-    signal next_dataW : word_t;
-    signal next_addr : halfword_t;
+    signal next_dataW, internal_dataW : word_t;
+    signal next_addr, internal_addr : halfword_t;
     signal state, next_state : state_type;
-    signal dx_LP, dx_RP, dy_LP, dy_RP : std_logic_vector(7 downto 0);
-    signal dn_LP, dn_RP : std_logic_vector(7 downto 0);
+    signal dx_0, dx_1, dx_2, dx_3, dy_0, dy_1, dy_2, dy_3 : std_logic_vector(7 downto 0);
+    signal dn_0, dn_1, dn_2, dn_3 : std_logic_vector(7 downto 0);
     signal pixel_matrix : pixel_matrix_type;
+    signal computer_pixels: computed_pixels_type;
     signal next_col, next_row : unsigned(15 downto 0) := (others => '0');
     signal col, row : unsigned(15 downto 0) := (others => '0');
     
     -- Define internal signals for addr and dataW
-    signal internal_addr : halfword_t := (others => '0');
-    signal internal_dataW : word_t := (others => '0');
+    --signal internal_addr : halfword_t := (others => '0');
+    --signal internal_dataW : word_t := (others => '0');
+    
+    signal half_select : bit_t := '0';
 
     constant TWO : signed(7 downto 0) := to_signed(2, 8);
 
 begin
 
     -- Update the cl process to use internal signals
-    cl : process(start, state, next_state, next_addr, next_dataW)
+    cl : process(start, state, next_state, next_addr, next_dataW, col, row, half_select, dataR)
     begin
         next_state <= state;
         en <= '0';
         we <= '0';
+        finish <= '0';
 
         -- Use internal signals as default assignments
         next_addr <= internal_addr;
         next_dataW <= internal_dataW;
+        addr <= internal_addr;
+        dataW <= internal_dataW;
         next_col <= col;
         next_row <= row;
-        dx_LP <= (others => '0');
-        dx_RP <= (others => '0');
-        dy_LP <= (others => '0');
-        dy_RP <= (others => '0');
-        dn_LP <= (others => '0');
-        dn_RP <= (others => '0');
+        -- dx_0 <= (others => '0');
+        -- dx_1 <= (others => '0');
+        -- dx_2 <= (others => '0');
+        -- dx_3 <= (others => '0');
+        -- dy_0 <= (others => '0');
+        -- dy_1 <= (others => '0');
+        -- dy_2 <= (others => '0');
+        -- dy_3 <= (others => '0');
+        -- dn_0 <= (others => '0');
+        -- dn_1 <= (others => '0');
+        -- dn_2 <= (others => '0');
+        -- dn_3 <= (others => '0');
         
         case state is
 
             when idle =>
                 if start = '1' then
                     next_state <= read_R0;
+                    en <= '1';
                 end if;
 
             when read_R0 =>
                 en <= '1';
-                next_addr <= halfword_t(col + row * 88);
+                next_addr <= std_logic_vector(to_unsigned(to_integer(row) * 88 + to_integer(col), addr'length));
                 
-                pixel_matrix(0,0) <= dataR(31 downto 24);
-                pixel_matrix(0,1) <= dataR(23 downto 16);
-                pixel_matrix(0,2) <= dataR(15 downto 8);
-                pixel_matrix(0,3) <= dataR(7 downto 0);
-                
-                if (row < 2) then
-                    next_state <= read_R1;
+                if col < 1 then
+                    pixel_matrix(0,0) <= dataR(31 downto 24);
+                    pixel_matrix(0,1) <= dataR(23 downto 16);
+                    pixel_matrix(0,2) <= dataR(15 downto 8);
+                    pixel_matrix(0,3) <= dataR(7 downto 0);
                 else
-                    next_state <= compute_edge;    
+                    pixel_matrix(0,2) <= dataR(31 downto 24);
+                    pixel_matrix(0,3) <= dataR(23 downto 16);
+                    pixel_matrix(0,4) <= dataR(15 downto 8);
+                    pixel_matrix(0,5) <= dataR(7 downto 0);
                 end if;
+                
+                next_state <= read_R1;
 
-                if (row = 287) then
-                    next_col <= next_col + 1;
-                    next_row <= (others => '0');
-                else
-                    next_row <= next_row + 1;
-                end if;
                 
             when read_R1 =>
                 en <= '1';
-                next_addr <= halfword_t(col + row * 88);
-
-                pixel_matrix(1,0) <= dataR(31 downto 24);
-                pixel_matrix(1,1) <= dataR(23 downto 16);
-                pixel_matrix(1,2) <= dataR(15 downto 8);
-                pixel_matrix(1,3) <= dataR(7 downto 0);
+                next_addr <= std_logic_vector(to_unsigned(to_integer(row + 1) * 88 + to_integer(col), addr'length));
                 
+                if col < 1 then    
+                    pixel_matrix(1,0) <= dataR(31 downto 24);
+                    pixel_matrix(1,1) <= dataR(23 downto 16);
+                    pixel_matrix(1,2) <= dataR(15 downto 8);
+                    pixel_matrix(1,3) <= dataR(7 downto 0);
+                else
+                    pixel_matrix(1,2) <= dataR(31 downto 24);
+                    pixel_matrix(1,3) <= dataR(23 downto 16);
+                    pixel_matrix(1,4) <= dataR(15 downto 8);
+                    pixel_matrix(1,5) <= dataR(7 downto 0);
+                end if;
                 next_state <= read_R2;
-                next_row <= next_row + 1;
                 
             when read_R2 =>
                 en <= '1';
-                next_addr <= halfword_t(col + row * 88);
+                next_addr <= std_logic_vector(to_unsigned(to_integer(row + 2) * 88 + to_integer(col), addr'length));
                 
-                pixel_matrix(2,0) <= dataR(31 downto 24);
-                pixel_matrix(2,1) <= dataR(23 downto 16);
-                pixel_matrix(2,2) <= dataR(15 downto 8);
-                pixel_matrix(2,3) <= dataR(7 downto 0);
+                if col < 1 then
+                    pixel_matrix(2,0) <= dataR(31 downto 24);
+                    pixel_matrix(2,1) <= dataR(23 downto 16);
+                    pixel_matrix(2,2) <= dataR(15 downto 8);
+                    pixel_matrix(2,3) <= dataR(7 downto 0);
+                else
+                    pixel_matrix(2,2) <= dataR(31 downto 24);
+                    pixel_matrix(2,3) <= dataR(23 downto 16);
+                    pixel_matrix(2,4) <= dataR(15 downto 8);
+                    pixel_matrix(2,5) <= dataR(7 downto 0);
+                end if;
                 
-                next_state <= compute_edge;
-                next_row <= next_row + 1;
+                if half_select = '0' then
+                    next_state <= compute_edge_FH;
+                else
+                    next_state <= compute_edge_SH;
+                end if;
 
-            when compute_edge =>
-                dx_LP <= std_logic_vector(
-                         signed(pixel_matrix(0,2)) - signed(pixel_matrix(0,0)) +
+            when compute_edge_FH =>
+                if col < 1 then
+                    dn_0 <= pixel_matrix(1,0); 
+                    
+                    dx_1 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,2)) - signed(pixel_matrix(0,0)) +
+                             TWO * (signed(pixel_matrix(1,2)) - signed(pixel_matrix(1,0))) +
+                             signed(pixel_matrix(2,2)) - signed(pixel_matrix(2,0)), 8)
+                             );
+                
+                    dy_1 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,0)) - signed(pixel_matrix(2,0)) + 
+                             TWO * (signed(pixel_matrix(0,1)) - signed(pixel_matrix(2,1))) + 
+                             signed(pixel_matrix(0,2)) - signed(pixel_matrix(2,2)), 8)
+                             );
+                
+                    dn_1 <= std_logic_vector(
+                             resize(abs(signed(dx_1)) + abs(signed(dy_1)), 8)
+                             );
+                
+                    dx_2 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,3)) - signed(pixel_matrix(0,1)) +
+                             TWO * (signed(pixel_matrix(1,3)) - signed(pixel_matrix(1,1))) +
+                             signed(pixel_matrix(2,3)) - signed(pixel_matrix(2,1)), 8)
+                             );
+                
+                    dy_2 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,1)) - signed(pixel_matrix(2,1)) + 
+                             TWO * (signed(pixel_matrix(0,2)) - signed(pixel_matrix(2,2))) + 
+                             signed(pixel_matrix(0,3)) - signed(pixel_matrix(2,3)), 8)
+                             );
+                
+                    dn_2 <= std_logic_vector(
+                             resize(abs(signed(dx_2)) + abs(signed(dy_2)), 8)
+                             );
+                             
+                else
+                    dx_0 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,3)) - signed(pixel_matrix(0,1)) +
+                             TWO * (signed(pixel_matrix(1,3)) - signed(pixel_matrix(1,1))) +
+                             signed(pixel_matrix(2,3)) - signed(pixel_matrix(2,1)), 8)
+                             );
+                
+                    dy_0 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,1)) - signed(pixel_matrix(2,1)) + 
+                             TWO * (signed(pixel_matrix(0,2)) - signed(pixel_matrix(2,2))) + 
+                             signed(pixel_matrix(0,3)) - signed(pixel_matrix(2,3)), 8)
+                             );
+                
+                    dn_0 <= std_logic_vector(
+                             resize(abs(signed(dx_1)) + abs(signed(dy_1)), 8)
+                             );
+                    
+                    
+                    dx_1 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,4)) - signed(pixel_matrix(0,2)) +
+                             TWO * (signed(pixel_matrix(1,2)) - signed(pixel_matrix(1,0))) +
+                             signed(pixel_matrix(2,2)) - signed(pixel_matrix(2,0)), 8)
+                             );
+                
+                    dy_1 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,2)) - signed(pixel_matrix(2,2)) + 
+                             TWO * (signed(pixel_matrix(0,3)) - signed(pixel_matrix(2,3))) + 
+                             signed(pixel_matrix(0,4)) - signed(pixel_matrix(2,4)), 8)
+                             );
+                
+                    dn_1 <= std_logic_vector(
+                             resize(abs(signed(dx_1)) + abs(signed(dy_1)), 8)
+                             );
+                
+                    dx_2 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,5)) - signed(pixel_matrix(0,3)) +
+                             TWO * (signed(pixel_matrix(1,5)) - signed(pixel_matrix(1,3))) +
+                             signed(pixel_matrix(2,5)) - signed(pixel_matrix(2,3)), 8)
+                             );
+                
+                    dy_2 <= std_logic_vector(
+                             resize(signed(pixel_matrix(0,3)) - signed(pixel_matrix(2,3)) + 
+                             TWO * (signed(pixel_matrix(0,4)) - signed(pixel_matrix(2,4))) + 
+                             signed(pixel_matrix(0,5)) - signed(pixel_matrix(2,5)), 8)
+                             );
+                
+                    dn_2 <= std_logic_vector(
+                             resize(abs(signed(dx_2)) + abs(signed(dy_2)), 8)
+                             );
+                end if; 
+                
+                
+                if col = MAX_COL - 1 then
+                    dn_3 <= pixel_matrix(1,5);
+                    next_state <= write;
+                else
+                    next_state <= shift_matrix;
+                    half_select <= '1';
+                end if;
+
+    
+        
+                
+            when shift_matrix =>
+                if col < 1 then
+                    pixel_matrix(0,0) <= pixel_matrix(0,2);
+                    pixel_matrix(1,0) <= pixel_matrix(1,2);
+                    pixel_matrix(2,0) <= pixel_matrix(2,2);
+                    pixel_matrix(0,1) <= pixel_matrix(0,3);
+                    pixel_matrix(1,1) <= pixel_matrix(1,3);
+                    pixel_matrix(2,1) <= pixel_matrix(2,3);
+                else
+                    pixel_matrix(0,0) <= pixel_matrix(0,4);
+                    pixel_matrix(1,0) <= pixel_matrix(1,4);
+                    pixel_matrix(2,0) <= pixel_matrix(2,4);
+                    pixel_matrix(0,1) <= pixel_matrix(0,5);
+                    pixel_matrix(1,1) <= pixel_matrix(1,5);
+                    pixel_matrix(2,1) <= pixel_matrix(2,5);
+                end if;
+                next_col <= col + 1;
+                next_state <= read_R0;
+            
+            when compute_edge_SH =>
+                dx_3 <= std_logic_vector(
+                         resize(signed(pixel_matrix(0,2)) - signed(pixel_matrix(0,0)) +
                          TWO * (signed(pixel_matrix(1,2)) - signed(pixel_matrix(1,0))) +
-                         signed(pixel_matrix(2,2)) - signed(pixel_matrix(2,0))
+                         signed(pixel_matrix(2,2)) - signed(pixel_matrix(2,0)), 8)
                          );
-
-                dy_LP <= std_logic_vector(
-                         signed(pixel_matrix(0,0)) - signed(pixel_matrix(2,0)) + 
+            
+                dy_3 <= std_logic_vector(
+                         resize(signed(pixel_matrix(0,0)) - signed(pixel_matrix(2,0)) + 
                          TWO * (signed(pixel_matrix(0,1)) - signed(pixel_matrix(2,1))) + 
-                         signed(pixel_matrix(0,2)) - signed(pixel_matrix(2,2))
+                         signed(pixel_matrix(0,2)) - signed(pixel_matrix(2,2)), 8)
                          );
-
-                dn_LP <= std_logic_vector(
-                         abs(signed(dx_LP)) + abs(signed(dy_LP))
+            
+                dn_3 <= std_logic_vector(
+                         resize(abs(signed(dx_3)) + abs(signed(dy_3)), 8)
                          );
-                      
-                dx_RP <= std_logic_vector(
-                         signed(pixel_matrix(0,3)) - signed(pixel_matrix(0,1)) +
-                         TWO * (signed(pixel_matrix(1,3)) - signed(pixel_matrix(1,1))) +
-                         signed(pixel_matrix(2,3)) - signed(pixel_matrix(2,1))
-                         );
-
-                dy_RP <= std_logic_vector(
-                         signed(pixel_matrix(0,1)) - signed(pixel_matrix(2,1)) + 
-                         TWO * (signed(pixel_matrix(0,2)) - signed(pixel_matrix(2,2))) + 
-                         signed(pixel_matrix(0,3)) - signed(pixel_matrix(2,3))
-                         );
-
-                dn_RP <= std_logic_vector(
-                         abs(signed(dx_RP)) + abs(signed(dy_RP))
-                         );
-
+                
+                half_select <= '0';    
                 next_state <= write;
+            
 
             when write =>
                 en <= '1';
                 we <= '1';
 
-                next_dataW <= pixel_matrix(1,0)   & 
-                              dn_LP               & 
-                              dn_RP               &
-                              pixel_matrix(1,3);
+                next_dataW <= dn_0 & dn_1 & dn_2 & dn_3;
+                addr <= std_logic_vector(to_unsigned(
+                        to_integer(row + 1) * 88 + (to_integer(col) - 1) + to_integer(MAX_ADDR), addr'length
+                        ));
+
                 
-                next_addr <= halfword_t(col + (row - 1) * 88 + MAX_ADDR);
-                
-                if row = MAX_ROW - 1 and col = MAX_COL - 1 then
+                -- Update col and row after the write operation
+                if row = MAX_ROW - 3 and col = MAX_COL - 1 then
                     finish <= '1';
                     next_state <= idle;
-                else
+                elsif row = MAX_ROW - 4 and col = MAX_COL - 1 then
+                    next_col <= (others => '0');
+                    next_row <= row + 1;
                     next_state <= read_R0;
+                elsif col = MAX_COL - 1 then
+                    next_col <= (others => '0');
+                    next_row <= row + 2;
+                    next_state <= read_R0;
+                else
+                    next_state <= compute_edge_FH;
                 end if;
+                
+     
+                
+   
+                
 
             when others =>
                 next_state <= idle;
@@ -202,29 +345,24 @@ begin
     end process cl;
 
     -- Update the seq process to use internal signals
-    seq : process(clk)
+    seq : process(clk, reset)
     begin
-        if rising_edge(clk) then
-            if reset = '1' then
-                state <= idle;
-                internal_addr <= (others => '0');
-                internal_dataW <= (others => '0');
-                col <= (others => '0');
-                row <= (others => '0');
-                finish <= '0';
-                en <= '0';
-            else
-                state <= next_state;
-                internal_addr <= next_addr;
-                internal_dataW <= next_dataW;
-                col <= next_col;
-                row <= next_row;
-            end if;
+        if reset = '1' then
+            state <= idle;
+            internal_addr <= (others => '0');
+            internal_dataW <= (others => '0');
+            col <= (others => '0');
+            row <= (others => '0');
+            finish <= '0';
+        elsif rising_edge(clk) then
+            state <= next_state;
+            internal_addr <= next_addr;
+            internal_dataW <= next_dataW;
+            col <= next_col;
+            row <= next_row;
         end if;
+
     end process seq;
 
-    -- Drive the output ports with internal signals
-    addr <= internal_addr;
-    dataW <= internal_dataW;
 
 end rtl;
