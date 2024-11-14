@@ -35,6 +35,10 @@ entity acc is
         addr   : out halfword_t;        -- Address bus for data.
         dataR  : in  word_t;            -- The data bus.
         dataW  : out word_t;            -- The data bus.
+        queueR : in word_t;
+        queueW : out word_t;
+        pop : out bit_t;
+        push : out bit_t;    
         en     : out bit_t;             -- Request signal for data.
         we     : out bit_t;             -- Read/Write signal for data.
         start  : in  bit_t;

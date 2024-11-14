@@ -45,6 +45,11 @@ architecture structure of top is
     signal finish   : bit_t;
     signal start_db : bit_t;
 
+    signal queueR : word_t;
+    signal queueW : word_t;
+    signal pop : bit_t;
+    signal push : bit_t;
+
     signal mem_enb   : std_logic;
     signal mem_web   : std_logic;
     signal mem_addrb : std_logic_vector(15 downto 0);
@@ -86,6 +91,10 @@ begin
             addr   => addr,
             dataR  => dataR,
             dataW  => dataW,
+            queueR => queueR,
+            queueW => queueW,
+            pop => pop,
+            push => push,
             en     => en,
             we     => we,
             start  => start_db,
@@ -148,4 +157,19 @@ begin
             dob   => mem_dob
         );
 
+    queue_inst_0 : entity work.fifo_queue
+        generic map(
+            DATA_WIDTH  => 32,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk   => clk,
+            reset => rst_s,
+            pop   => pop,
+            push  => push,
+            din   => dataW,
+            dout  => queueR,
+            empty => open,
+            full  => open
+        );
 end structure;
