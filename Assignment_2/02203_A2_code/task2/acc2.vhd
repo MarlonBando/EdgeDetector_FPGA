@@ -29,7 +29,8 @@ entity acc is
     generic(
         MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25343, 16);
         IMG_WIDTH : unsigned(15 downto 0) := to_unsigned(352, 16);
-        IMG_HEIGHT : unsigned(15 downto 0) := to_unsigned(352, 16)
+        IMG_HEIGHT : unsigned(15 downto 0) := to_unsigned(288, 16);
+        LAST_BLOCK : unsigned(15 downto 0) := to_unsigned(352 * (288 - 3), 16)
     );
     port(
         clk    : in  bit_t;             -- The clock.
@@ -41,6 +42,8 @@ entity acc is
         we     : out bit_t;             -- Read/Write signal for data.
         queueR : in word_t;
         queueW : out word_t; 
+        pop: out bit_t;
+        push: out bit_t;
         start  : in  bit_t;
         finish : out bit_t
     );
@@ -53,26 +56,40 @@ end acc;
 architecture rtl of acc is
 
 -- All internal signals are defined here
-    type state_type is (idle, read, compute_and_write);
+    type state_type is (idle, read_first_column, read_mixed, shift_registers, new_column, compute_and_write, write1, write2);
     signal data_r, data_w, next_data_w : word_t;
     signal next_reg_addr, reg_addr : halfword_t;
     signal state, next_state : state_type;
+
+    signal data_queue : word_t;
 
     signal matrix_first_word, matrix_second_word, matrix_third_word : word_t;
     signal matrix_first_word_addr, matrix_second_word_addr, matrix_third_word_addr : word_t;
     signal first_half_word, second_half_word,third_half_word : halfword_t;
     signal first_read : bit_t;
 
-    signal cursor_x, cursor_y : halfword_t;
-    signal next_cursor_x, next_cursor_y : halfword_t;
+    signal cursor_x, cursor_y : halfword_t := (others => '0');
+    signal b_00_r1_cursor_x,b_00_r1_cursor_y : halfword_t := (others => '0');
+    signal next_cursor_x, next_cursor_y : halfword_t := (others => '0');
 
     -- Registers to store pixel data for convolution operations
-    signal b_00_r1, b_00_r2, b_00_r3,  b_01_r1, b_01_r2, b_01_r3 : word_t;    
-    signal b_10_r1, b_10_r2, b_10_r3,  b_11_r1, b_11_r2, b_11_r3 : word_t;
-    signal next_b_00_r1, next_b_00_r2, next_b_00_r3, next_b_01_r1, next_b_01_r2, next_b_01_r3 : word_t;
-    signal next_b_10_r1, next_b_10_r2, next_b_10_r3, next_b_11_r1, next_b_11_r2, next_b_11_r3 : word_t;
+    signal b_00_r1, b_00_r2, b_00_r3 : word_t := (others => '0');    
+    signal b_01_r1, b_01_r2, b_01_r3 : word_t := (others => '0');    
+    signal b_10_r1, b_10_r2, b_10_r3 : word_t := (others => '0');    
+    signal b_11_r1, b_11_r2, b_11_r3 : word_t := (others => '0');    
 
-    signal next_counter, counter : unsigned(0 to 3);
+    signal next_b_00_r1, next_b_00_r2, next_b_00_r3 : word_t := (others => '0');
+    signal next_b_01_r1, next_b_01_r2, next_b_01_r3 : word_t := (others => '0');
+    signal next_b_10_r1, next_b_10_r2, next_b_10_r3 : word_t := (others => '0');
+    signal next_b_11_r1, next_b_11_r2, next_b_11_r3 : word_t := (others => '0');
+
+    signal computed_b_00_r1, computed_b_00_r2, computed_b_00_r3, computed_b_10_r1 : word_t := (others => '0'); 
+    signal computed_q_pixel_1, computed_q_pixel_2, computed_q_pixel_3, computed_q_pixel_4 : byte_t := (others => '0');
+
+    signal is_last_block : bit_t := '0';
+    signal first_column : bit_t := '1';
+
+    signal next_counter, counter : unsigned(0 to 3) := to_unsigned(0,4);
 
     type sobel_matrix is array (0 to 2, 0 to 2) of integer range -2 to 2;
     constant sobel_x : sobel_matrix := ((-1, 0, 1), (-2, 0, 2), (-1, 0, 1));
@@ -82,7 +99,7 @@ architecture rtl of acc is
 
 begin
 
-    cl : process(start, state, next_state, next_reg_addr, data_r, data_w, next_data_w)
+    cl : process(start, state, next_state, dataR, queueR, counter, cursor_x, cursor_y)
     begin
         next_state <= state;
         next_reg_addr <= reg_addr;
@@ -90,33 +107,40 @@ begin
 
         en <= '0';
         we <= '0';
-        -- reg_addr <= cursor_x + cursor_y;
         dataW <= data_w;
+
+        push <= '0';
+        pop <= '0';
 
         next_cursor_x <= cursor_x;
         next_cursor_y <= cursor_y;
         next_counter <= counter;
 
+        queueW <= data_queue;
+                
+        addr <= reg_addr;
 
-        
-        
         case state is
 
             when idle =>
                 if start = '1' then
-                    next_state <= read;
+                    next_state <= read_first_column;
                 end if;
             
-            when read =>
+            when read_first_column =>
+                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
                 en <= '1';
+                
                 case counter is
-                    when "0000" =>  -- 0
+                    when "0000" =>
+                        b_00_r1_cursor_x <= cursor_x;
+                        b_00_r1_cursor_y <= cursor_y;
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) + to_unsigned(1, 16));
-                        addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
                         next_counter <= counter + 1;
 
-                    when "0001" =>  -- 1
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                    when "0001" =>
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);    
+                        next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));    
                         next_b_00_r1 <= dataR;
                         next_counter <= counter + 1;
                         
@@ -127,6 +151,7 @@ begin
                     
                     when "0011" =>
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_00_r2 <= dataR;
                         next_counter <= counter + 1;
                     
@@ -137,6 +162,7 @@ begin
                     
                     when "0101" =>
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_00_r3 <= dataR;
                         next_counter <= counter + 1;
 
@@ -147,16 +173,18 @@ begin
 
                     when "0111" =>
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_10_r1 <= dataR;
                         next_counter <= counter + 1;
 
                     when "1000" =>
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) + to_unsigned(1, 16));
                         next_b_11_r1 <= dataR;
-                        next_state <= compute_and_write;
+                        next_counter <= counter + 1;
                     
                     when "1001" =>
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_10_r2 <= dataR;
                         next_counter <= counter + 1;
 
@@ -167,17 +195,116 @@ begin
 
                     when "1011" =>
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_10_r3 <= dataR;
                         next_counter <= counter + 1;
 
                     when "1100" =>
+                        next_cursor_x <= b_00_r1_cursor_x;
+                        next_cursor_y <= b_00_r1_cursor_y;
                         next_b_11_r3 <= dataR;
                         next_counter <= "0000";
                         next_state <= compute_and_write;
+
                     
                     when others =>
                         next_state <= idle;
                 end case;    
+            
+            when read_mixed =>
+                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
+                en <= '1';
+                
+                case counter is
+                    when "0000" =>
+                        b_00_r1_cursor_y <= cursor_y;
+                        next_counter <= counter + 1;
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        pop <= '1';
+
+                    when "0001" =>
+                        next_b_00_r1 <= queueR;
+                        next_b_01_r1 <= dataR;
+                        next_counter <= counter + 1;
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        pop <= '1';
+                    
+                    when "0010" =>
+                        next_b_00_r2 <= queueR;
+                        next_b_01_r2 <= dataR;
+                        next_counter <= counter + 1;
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        pop <= '1';
+                    
+                    when "0011" =>
+                        next_b_00_r3 <= queueR;
+                        next_b_01_r3 <= dataR;
+                        next_counter <= counter + 1;
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        pop <= '1';
+                    
+                    when "0100" =>
+                        next_b_10_r1 <= queueR;
+                        next_b_11_r1 <= dataR;
+                        next_counter <= counter + 1;
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        pop <= '1';
+                    
+                    when "0101" =>
+                        next_b_10_r2 <= queueR;
+                        next_b_11_r2 <= dataR;
+                        next_counter <= counter + 1;
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        pop <= '1';
+                    
+                    when "0110" =>
+                        next_b_10_r3 <= queueR;
+                        next_b_11_r3 <= dataR;
+                        next_counter <= (others => '0');
+                        next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1,16));
+                        next_cursor_y <= b_00_r1_cursor_y;
+                        pop <= '0';
+                        next_state <= compute_and_write;
+                    
+                    when others =>
+                        next_state <= idle;
+                    end case; 
+                
+                
+            when shift_registers =>
+                next_b_00_r1 <= b_10_r1;
+                next_b_00_r2 <= b_10_r2;
+                next_b_00_r3 <= b_10_r3;
+
+                next_b_01_r1 <= b_11_r1;
+                next_b_01_r2 <= b_11_r2;
+                next_b_01_r3 <= b_11_r3;
+
+                computed_b_00_r1 <= computed_b_10_r1;
+                computed_q_pixel_1 <= computed_q_pixel_4;
+
+                next_counter <= "0111";
+
+                en <= '1';
+                we <= '0';
+                
+
+                if unsigned(cursor_y) = LAST_BLOCK then
+                    next_state <= write1;
+                    is_last_block <= '1';
+                    
+                    
+                    computed_b_10_r1 <= (others => '0');
+                    computed_q_pixel_3 <= (others => '0');
+                    computed_q_pixel_4 <= (others => '0');
+                    computed_b_00_r3 <= (others => '0');
+                else
+                    next_cursor_y <= std_logic_vector(unsigned(cursor_y) + to_unsigned(3, 2) * IMG_WIDTH);
+                    next_cursor_x <= std_logic_vector(unsigned(cursor_x) + to_unsigned(1, 16));
+                    next_state <= read_first_column;
+                end if;
+
+                
             
             when compute_and_write =>
                 -- Perform convolution with Sobel operator
@@ -202,256 +329,322 @@ begin
                 en <= '1';
                 we <= '1';
 
-                next_b_00_r2(15 downto 8) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r1(7  downto 0)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_00_r1(23 downto 16)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r2(7  downto 0)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_00_r2(23 downto 16)))  * sobel_x(1,2) +
-                        to_integer(signed(b_00_r3(7  downto 0)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r1(7  downto 0)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_00_r3(7  downto 0)))   * sobel_y(2,0) +
-                        to_integer(signed(b_00_r1(15 downto 8)))   * sobel_y(0,1) + 
-                        to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(2,1) +
-                        to_integer(signed(b_00_r1(23 downto 16)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,2)
-                    )
-                ),8));
+                -- next_b_00_r2(15 downto 8) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r1(7  downto 0)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_00_r1(23 downto 16)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r2(7  downto 0)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_00_r2(23 downto 16)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_00_r3(7  downto 0)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r1(7  downto 0)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_00_r3(7  downto 0)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_00_r1(15 downto 8)))   * sobel_y(0,1) + 
+                --         to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(2,1) +
+                --         to_integer(signed(b_00_r1(23 downto 16)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
-                next_b_00_r2(23 downto 16) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r1(15 downto 8)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_00_r1(31 downto 24)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r2(15 downto 8)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_00_r2(31 downto 24)))  * sobel_x(1,2) +
-                        to_integer(signed(b_00_r3(15 downto 8)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_00_r3(31 downto 24)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r1(15 downto 8)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(2,0) +
-                        to_integer(signed(b_00_r1(23 downto 16)))  * sobel_y(0,1) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,1) +
-                        to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,2)
-                    )
-                ), 8));
+                -- next_b_00_r2(23 downto 16) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r1(15 downto 8)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_00_r1(31 downto 24)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r2(15 downto 8)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_00_r2(31 downto 24)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_00_r3(15 downto 8)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_00_r3(31 downto 24)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r1(15 downto 8)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_00_r1(23 downto 16)))  * sobel_y(0,1) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,1) +
+                --         to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,2)
+                --     )
+                -- ), 8));
 
-                next_b_00_r2(31 downto 24) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r1(23 downto 16)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_01_r1(7 downto 0)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r2(23 downto 16)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_01_r2(7 downto 0)))  * sobel_x(1,2) +
-                        to_integer(signed(b_00_r3(23 downto 16)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_01_r3(7 downto 0)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r1(23 downto 16)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))   * sobel_y(2,0) +
-                        to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,1) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,1) +
-                        to_integer(signed(b_01_r1(7 downto 0)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_01_r3(7 downto 0)))  * sobel_y(2,2)
-                    )
-                ), 8));
+                -- next_b_00_r2(31 downto 24) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r1(23 downto 16)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_01_r1(7 downto 0)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r2(23 downto 16)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_01_r2(7 downto 0)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_00_r3(23 downto 16)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_01_r3(7 downto 0)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r1(23 downto 16)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,1) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,1) +
+                --         to_integer(signed(b_01_r1(7 downto 0)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_01_r3(7 downto 0)))  * sobel_y(2,2)
+                --     )
+                -- ), 8));
 
-                next_b_01_r2(7 downto 0) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r1(31 downto 24)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_01_r1(15 downto 8)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r2(31 downto 24)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_01_r2(15 downto 8)))  * sobel_x(1,2) +
-                        to_integer(signed(b_00_r3(31 downto 24)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_01_r3(15 downto 8)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r1(31 downto 24)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_00_r3(31 downto 24)))   * sobel_y(2,0) +
-                        to_integer(signed(b_01_r1(7 downto 0)))  * sobel_y(0,1) + 
-                        to_integer(signed(b_01_r3(7 downto 0)))  * sobel_y(2,1) +
-                        to_integer(signed(b_01_r1(15 downto 8)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_01_r3(15 downto 8)))  * sobel_y(2,2)
-                    )
-                ), 8));
+                -- next_b_01_r2(7 downto 0) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r1(31 downto 24)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_01_r1(15 downto 8)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r2(31 downto 24)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_01_r2(15 downto 8)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_00_r3(31 downto 24)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_01_r3(15 downto 8)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r1(31 downto 24)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_00_r3(31 downto 24)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_01_r1(7 downto 0)))  * sobel_y(0,1) + 
+                --         to_integer(signed(b_01_r3(7 downto 0)))  * sobel_y(2,1) +
+                --         to_integer(signed(b_01_r1(15 downto 8)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_01_r3(15 downto 8)))  * sobel_y(2,2)
+                --     )
+                -- ), 8));
 
-                next_b_00_r3(15 downto 8) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r2(7  downto 0)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_00_r2(23 downto 16)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r3(7  downto 0)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_x(1,2) +
-                        to_integer(signed(b_10_r1(7  downto 0)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_10_r1(23 downto 16)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r2(7  downto 0)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_10_r1(7  downto 0)))   * sobel_y(2,0) +
-                        to_integer(signed(b_00_r2(15 downto 8)))   * sobel_y(0,1) + 
-                        to_integer(signed(b_10_r1(15 downto 8)))   * sobel_y(2,1) +
-                        to_integer(signed(b_00_r2(23 downto 16)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_10_r1(23 downto 16)))  * sobel_y(2,2)
-                    )
-                ),8));
+                -- next_b_00_r3(15 downto 8) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r2(7  downto 0)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_00_r2(23 downto 16)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r3(7  downto 0)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_10_r1(7  downto 0)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_10_r1(23 downto 16)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r2(7  downto 0)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_10_r1(7  downto 0)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_00_r2(15 downto 8)))   * sobel_y(0,1) + 
+                --         to_integer(signed(b_10_r1(15 downto 8)))   * sobel_y(2,1) +
+                --         to_integer(signed(b_00_r2(23 downto 16)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_10_r1(23 downto 16)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
-                next_b_00_r3(23 downto 16) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r1(15 downto 8)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_00_r1(31 downto 24)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r2(15 downto 8)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_00_r2(31 downto 24)))  * sobel_x(1,2) +
-                        to_integer(signed(b_00_r3(15 downto 8)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_00_r3(31 downto 24)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r1(15 downto 8)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(2,0) +
-                        to_integer(signed(b_00_r1(23 downto 16)))  * sobel_y(0,1) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,1) +
-                        to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,2)
-                    )
-                ),8));
+                -- next_b_00_r3(23 downto 16) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r1(15 downto 8)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_00_r1(31 downto 24)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r2(15 downto 8)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_00_r2(31 downto 24)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_00_r3(15 downto 8)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_00_r3(31 downto 24)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r1(15 downto 8)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_00_r1(23 downto 16)))  * sobel_y(0,1) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,1) +
+                --         to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
-                next_b_00_r3(31 downto 24) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r1(23 downto 5)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_01_r1(7 downto 0)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r2(23 downto 5)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_01_r2(7 downto 0)))  * sobel_x(1,2) +
-                        to_integer(signed(b_00_r3(23 downto 5)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_01_r3(7 downto 0)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r1(23 downto 16)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))   * sobel_y(2,0) +
-                        to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,1) + 
-                        to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,1) +
-                        to_integer(signed(b_01_r1(7 downto 0)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_01_r3(7 downto 0)))  * sobel_y(2,2)
-                    )
-                ),8));
+                -- next_b_00_r3(31 downto 24) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r1(23 downto 5)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_01_r1(7 downto 0)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r2(23 downto 5)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_01_r2(7 downto 0)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_00_r3(23 downto 5)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_01_r3(7 downto 0)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r1(23 downto 16)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_00_r1(31 downto 24)))  * sobel_y(0,1) + 
+                --         to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,1) +
+                --         to_integer(signed(b_01_r1(7 downto 0)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_01_r3(7 downto 0)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
-                next_b_01_r3(7 downto 0) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r2(31 downto 24)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_01_r2(15 downto 8)))  * sobel_x(0,2) +
-                        to_integer(signed(b_00_r3(31 downto 24)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_01_r3(15 downto 8)))  * sobel_x(1,2) +
-                        to_integer(signed(b_10_r1(31 downto 24)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_11_r1(15 downto 8)))  * sobel_x(2,2)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r2(23 downto 16)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_10_r1(23 downto 16)))   * sobel_y(2,0) +
-                        to_integer(signed(b_00_r2(31 downto 24)))  * sobel_y(0,1) + 
-                        to_integer(signed(b_10_r1(31 downto 24)))  * sobel_y(2,1) +
-                        to_integer(signed(b_10_r2(7 downto 0)))  * sobel_y(0,2) + 
-                        to_integer(signed(b_11_r1(7 downto 0)))  * sobel_y(2,2)
-                    )
-                ),8));
+                -- next_b_01_r3(7 downto 0) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r2(31 downto 24)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_01_r2(15 downto 8)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_00_r3(31 downto 24)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_01_r3(15 downto 8)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_10_r1(31 downto 24)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_11_r1(15 downto 8)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r2(23 downto 16)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_10_r1(23 downto 16)))   * sobel_y(2,0) +
+                --         to_integer(signed(b_00_r2(31 downto 24)))  * sobel_y(0,1) + 
+                --         to_integer(signed(b_10_r1(31 downto 24)))  * sobel_y(2,1) +
+                --         to_integer(signed(b_10_r2(7 downto 0)))  * sobel_y(0,2) + 
+                --         to_integer(signed(b_11_r1(7 downto 0)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
 
-                next_b_10_r1(15 downto 8) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r3(7  downto 0)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_x(0,3) +
-                        to_integer(signed(b_10_r1(7  downto 0)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_10_r1(23 downto 16)))  * sobel_x(1,3) +
-                        to_integer(signed(b_10_r2(7  downto 0)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_10_r2(23 downto 16)))  * sobel_x(2,3)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r3(7  downto 0)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_10_r2(7  downto 0)))   * sobel_y(0,3) +
-                        to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(1,0) + 
-                        to_integer(signed(b_10_r2(15 downto 8)))   * sobel_y(1,3) +
-                        to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,0) + 
-                        to_integer(signed(b_10_r2(23 downto 16)))  * sobel_y(2,3)
-                    )
-                ),8));
+                -- next_b_10_r1(15 downto 8) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r3(7  downto 0)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_10_r1(7  downto 0)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_10_r1(23 downto 16)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_10_r2(7  downto 0)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_10_r2(23 downto 16)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r3(7  downto 0)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_10_r2(7  downto 0)))   * sobel_y(0,2) +
+                --         to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(1,0) + 
+                --         to_integer(signed(b_10_r2(15 downto 8)))   * sobel_y(1,2) +
+                --         to_integer(signed(b_00_r3(23 downto 16)))  * sobel_y(2,0) + 
+                --         to_integer(signed(b_10_r2(23 downto 16)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
-                next_b_10_r1(23 downto 16) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r3(15  downto 8)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_00_r3(31 downto 24)))  * sobel_x(0,3) +
-                        to_integer(signed(b_10_r1(15  downto 8)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_10_r1(31 downto 24)))  * sobel_x(1,3) +
-                        to_integer(signed(b_10_r2(15  downto 8)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_10_r2(31 downto 24)))  * sobel_x(2,3)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_10_r2(15 downto 8)))   * sobel_y(0,3) +
-                        to_integer(signed(b_00_r3(23 downto 16)))   * sobel_y(1,0) + 
-                        to_integer(signed(b_10_r2(23 downto 16)))   * sobel_y(1,3) +
-                        to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,0) + 
-                        to_integer(signed(b_10_r2(31 downto 24)))  * sobel_y(2,3)
-                    )
-                ),8));
+                -- next_b_10_r1(23 downto 16) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r3(15  downto 8)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_00_r3(31 downto 24)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_10_r1(15  downto 8)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_10_r1(31 downto 24)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_10_r2(15  downto 8)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_10_r2(31 downto 24)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r3(15 downto 8)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_10_r2(15 downto 8)))   * sobel_y(0,2) +
+                --         to_integer(signed(b_00_r3(23 downto 16)))   * sobel_y(1,0) + 
+                --         to_integer(signed(b_10_r2(23 downto 16)))   * sobel_y(1,2) +
+                --         to_integer(signed(b_00_r3(31 downto 24)))  * sobel_y(2,0) + 
+                --         to_integer(signed(b_10_r2(31 downto 24)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
                 
-                next_b_10_r1(31 downto 24) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r3(23  downto 15)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_01_r3(7 downto 0)))  * sobel_x(0,3) +
-                        to_integer(signed(b_10_r1(23  downto 15)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_11_r1(7 downto 0)))  * sobel_x(1,3) +
-                        to_integer(signed(b_10_r2(23  downto 15)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_11_r2(7 downto 0)))  * sobel_x(2,3)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r3(23  downto 15)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_10_r2(23  downto 15)))   * sobel_y(0,3) +
-                        to_integer(signed(b_00_r3(31 downto 24)))   * sobel_y(1,0) + 
-                        to_integer(signed(b_10_r2(31 downto 24)))   * sobel_y(1,3) +
-                        to_integer(signed(b_10_r3(7 downto 0)))  * sobel_y(2,0) + 
-                        to_integer(signed(b_11_r2(7 downto 0)))  * sobel_y(2,3)
-                    )
-                ),8));
+                -- next_b_10_r1(31 downto 24) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r3(23  downto 15)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_01_r3(7 downto 0)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_10_r1(23  downto 15)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_11_r1(7 downto 0)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_10_r2(23  downto 15)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_11_r2(7 downto 0)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r3(23  downto 15)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_10_r2(23  downto 15)))   * sobel_y(0,2) +
+                --         to_integer(signed(b_00_r3(31 downto 24)))   * sobel_y(1,0) + 
+                --         to_integer(signed(b_10_r2(31 downto 24)))   * sobel_y(1,2) +
+                --         to_integer(signed(b_10_r3(7 downto 0)))  * sobel_y(2,0) + 
+                --         to_integer(signed(b_11_r2(7 downto 0)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
-                next_b_10_r1(31 downto 24) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r3(23  downto 15)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_01_r3(7 downto 0)))  * sobel_x(0,3) +
-                        to_integer(signed(b_10_r1(23  downto 15)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_11_r1(7 downto 0)))  * sobel_x(1,3) +
-                        to_integer(signed(b_10_r2(23  downto 15)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_11_r2(7 downto 0)))  * sobel_x(2,3)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r3(23  downto 15)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_10_r2(23  downto 15)))   * sobel_y(0,3) +
-                        to_integer(signed(b_00_r3(31 downto 24)))   * sobel_y(1,0) + 
-                        to_integer(signed(b_10_r2(31 downto 24)))   * sobel_y(1,3) +
-                        to_integer(signed(b_10_r3(7 downto 0)))  * sobel_y(2,0) + 
-                        to_integer(signed(b_11_r2(7 downto 0)))  * sobel_y(2,3)
-                    )
-                ),8));
+                -- next_b_11_r1(7 downto 0) <= std_logic_vector(to_unsigned(abs(
+                --     (
+                --         to_integer(signed(b_00_r3(31  downto 24)))   * sobel_x(0,0) + 
+                --         to_integer(signed(b_01_r3(15 downto 8)))  * sobel_x(0,2) +
+                --         to_integer(signed(b_10_r1(31  downto 24)))   * sobel_x(1,0) + 
+                --         to_integer(signed(b_11_r1(15 downto 8)))  * sobel_x(1,2) +
+                --         to_integer(signed(b_10_r2(31  downto 24)))   * sobel_x(2,0) + 
+                --         to_integer(signed(b_11_r2(15 downto 8)))  * sobel_x(2,2)
+                --     ) +
+                --     (
+                --         to_integer(signed(b_00_r3(31  downto 24)))   * sobel_y(0,0) + 
+                --         to_integer(signed(b_10_r2(31  downto 24)))   * sobel_y(0,2) +
+                --         to_integer(signed(b_10_r3(7 downto 0)))   * sobel_y(1,0) + 
+                --         to_integer(signed(b_11_r2(7 downto 0)))   * sobel_y(1,2) +
+                --         to_integer(signed(b_10_r3(15 downto 8)))  * sobel_y(2,0) + 
+                --         to_integer(signed(b_11_r2(15 downto 8)))  * sobel_y(2,2)
+                --     )
+                -- ),8));
 
-                next_b_11_r1(7 downto 0) <= std_logic_vector(to_unsigned(abs(
-                    (
-                        to_integer(signed(b_00_r3(31  downto 24)))   * sobel_x(0,0) + 
-                        to_integer(signed(b_01_r3(15 downto 8)))  * sobel_x(0,3) +
-                        to_integer(signed(b_10_r1(31  downto 24)))   * sobel_x(1,0) + 
-                        to_integer(signed(b_11_r1(15 downto 8)))  * sobel_x(1,3) +
-                        to_integer(signed(b_10_r2(31  downto 24)))   * sobel_x(2,0) + 
-                        to_integer(signed(b_11_r2(15 downto 8)))  * sobel_x(2,3)
-                    ) +
-                    (
-                        to_integer(signed(b_00_r3(31  downto 24)))   * sobel_y(0,0) + 
-                        to_integer(signed(b_10_r2(31  downto 24)))   * sobel_y(0,3) +
-                        to_integer(signed(b_10_r3(7 downto 0)))   * sobel_y(1,0) + 
-                        to_integer(signed(b_11_r2(7 downto 0)))   * sobel_y(1,3) +
-                        to_integer(signed(b_10_r3(15 downto 8)))  * sobel_y(2,0) + 
-                        to_integer(signed(b_11_r2(15 downto 8)))  * sobel_y(2,3)
-                    )
-                ),8));
+                -- Invert pixel values
+                -- next_b_00_r2(15 downto 8) <= not b_00_r2(15 downto 8);
+                -- next_b_00_r2(23 downto 16) <= not b_00_r2(23 downto 16); 
+                -- next_b_00_r2(31 downto 24) <= not b_00_r2(31 downto 24);
+                -- next_b_01_r2(7 downto 0) <= not b_01_r2(7 downto 0);
 
+                -- next_b_00_r3(15 downto 8) <= not b_00_r3(15 downto 8);
+                -- next_b_00_r3(23 downto 16) <= not b_00_r3(23 downto 16);
+                -- next_b_00_r3(31 downto 24) <= not b_00_r3(31 downto 24);
+                -- next_b_01_r3(7 downto 0) <= not b_01_r3(7 downto 0);
 
-                next_state <= idle;
+                -- next_b_10_r1(15 downto 8) <= not b_10_r1(15 downto 8);
+                -- next_b_10_r1(23 downto 16) <= not b_10_r1(23 downto 16);
+                -- next_b_10_r1(31 downto 24) <= not b_10_r1(31 downto 24);
+                -- next_b_11_r1(7 downto 0) <= not b_11_r1(7 downto 0);
+
+                computed_b_00_r2(15 downto 8) <= not b_00_r2(15 downto 8);
+                computed_b_00_r2(23 downto 16) <= not b_00_r2(23 downto 16);
+                computed_b_00_r2(31 downto 24) <= not b_00_r2(31 downto 24);
+                
+                computed_q_pixel_2 <= not b_01_r2(7 downto 0);
+
+                if is_last_block = '0' then
+                    computed_b_10_r1(15 downto 8) <= not b_10_r1(15 downto 8);
+                    computed_b_10_r1(23 downto 16) <= not b_10_r1(23 downto 16);
+                    computed_b_10_r1(31 downto 24) <= not b_10_r1(31 downto 24);
+    
+                    
+                    computed_q_pixel_3 <= not b_01_r3(7 downto 0);
+                    computed_q_pixel_4 <= not b_11_r1(7 downto 0);
+                    
+                    computed_b_00_r3(15 downto 8) <= not b_00_r3(15 downto 8);
+                    computed_b_00_r3(23 downto 16) <= not b_01_r3(23 downto 16);
+                    computed_b_00_r3(31 downto 24) <= not b_01_r3(31 downto 24);
+                end if;
+
+                we <= '1';
+                en <= '1';
+                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
+                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+    
+                next_data_w <= computed_b_00_r1;
+                
+                push <= '1';
+                data_queue <= b_01_r1;
+
+                next_state <= write1;
+
+            when write1 =>
+                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
+                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+
+                we <= '1';
+                en <= '1';
+                next_data_w <= computed_b_00_r2;
+
+                push <= '1';
+                data_queue <= b_01_r2;
+                
+                next_state <= write2;   
+                         
+            when write2 =>
+                we <= '1';
+                en <= '1';
+                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
+                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                next_data_w <= computed_b_00_r3;
+
+                push <= '1';
+                data_queue <= b_01_r3;
+                
+                b_00_r1_cursor_x <= cursor_x;
+                b_00_r1_cursor_y <= next_cursor_y;
+
+                if is_last_block = '1' then 
+                    next_state <= new_column;
+                else
+                    next_state <= shift_registers;
+                end if;
+            
+                
+            when new_column =>
+                next_cursor_x <= std_logic_vector(unsigned(cursor_x) + to_unsigned(2, 16));
+                next_cursor_y <= (others => '0');
+                first_column <= '0';
+                is_last_block <= '0';
+                next_state <= read_mixed;
 
             when others =>
                 next_state <= idle;
@@ -474,12 +667,27 @@ begin
 
                 cursor_x <= (others => '0');
                 cursor_y <= (others => '0');
+                
+                counter <= (others => '0');
 
-                read_all <= '0';
+                b_00_r1 <= (others => '0');
+                b_00_r2 <= (others => '0');
+                b_00_r3 <= (others => '0');
+                b_01_r1 <= (others => '0');
+                b_01_r2 <= (others => '0');
+                b_01_r3 <= (others => '0');
+                b_10_r1 <= (others => '0');
+                b_10_r2 <= (others => '0');
+                b_10_r3 <= (others => '0');
+                b_11_r1 <= (others => '0');
+                b_11_r2 <= (others => '0');
+                b_11_r3 <= (others => '0');
            else
                 state <= next_state;
                 reg_addr <= next_reg_addr;
                 data_w <= next_data_w;
+
+                counter <= next_counter;
 
                 cursor_x <= next_cursor_x;
                 cursor_y <= next_cursor_y;

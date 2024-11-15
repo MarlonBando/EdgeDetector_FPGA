@@ -20,7 +20,7 @@ end entity fifo_queue;  -- Changed from queue to fifo_queue
 
 architecture behavioural of fifo_queue is
     type queue_type is array(0 to QUEUE_DEPTH-1) of std_logic_vector(DATA_WIDTH-1 downto 0);
-    signal queue : queue_type;
+    signal queue : queue_type := (others => (others => '0'));
     signal head_ptr : integer range 0 to QUEUE_DEPTH-1 := 0;
     signal tail_ptr : integer range 0 to QUEUE_DEPTH-1 := 0;
     signal length : integer range 0 to QUEUE_DEPTH := 0;
@@ -32,9 +32,7 @@ begin
     internal_full  <= '1' when length = QUEUE_DEPTH else '0';
     empty <= internal_empty;
     full <= internal_full;
-    
-    -- Output the front of queue
-    dout <= queue(head_ptr) when internal_empty = '0' else (others => '0');
+    dout <= (others => '0');
 
     process(clk)
     begin
@@ -46,17 +44,24 @@ begin
                 queue <= (others => (others => '0'));
                 dout <= (others => '0');
             else
-                dout <= queue(head_ptr) when internal_empty = '0' else (others => '0');
-
-                if pop = '1' and internal_empty = '0' then
-                    head_ptr <= (head_ptr + 1) mod QUEUE_DEPTH;
-                    length <= length - 1;
-                end if;
-
                 if push = '1' and internal_full = '0' then
                     queue(tail_ptr) <= din;
                     tail_ptr <= (tail_ptr + 1) mod QUEUE_DEPTH;
                     length <= length + 1;
+                    -- If this is first element, make it visible immediately
+                    if length = 0 then
+                        dout <= din;
+                    end if;
+                end if;
+
+                if internal_empty = '0' then
+                    dout <= queue(head_ptr);
+                    if pop = '1' then
+                        head_ptr <= (head_ptr + 1) mod QUEUE_DEPTH;
+                        length <= length - 1;
+                    end if;
+                else
+                    dout <= (others => '0');
                 end if;
             end if;
         end if;

@@ -59,10 +59,32 @@ architecture structure of testbench is
             addr   : out halfword_t;
             dataR  : in  word_t;
             dataW  : out word_t;
+            queueR : in word_t;
+            queueW : out word_t;
+            pop    : out bit_t;
+            push   : out bit_t;
             en     : out bit_t;
             we     : out bit_t;
             start  : in  bit_t;
-            finish : out bit_t);
+            finish : out bit_t
+        );
+    end component;
+
+    component fifo_queue is
+        generic(
+            DATA_WIDTH : integer := 32;
+            QUEUE_DEPTH : integer := 288
+        );
+        port (
+            clk : in std_logic;
+            reset : in std_logic;
+            pop : in std_logic;
+            push: in std_logic;
+            din : in std_logic_vector(DATA_WIDTH-1 downto 0);
+            dout: out std_logic_vector(DATA_WIDTH-1 downto 0);
+            empty : out std_logic;
+            full : out std_logic
+        );
     end component;
 
     signal StopSimulation : bit_t := '0';
@@ -76,6 +98,11 @@ architecture structure of testbench is
     signal we     : bit_t;
     signal start  : bit_t;
     signal finish : bit_t;
+
+    signal queueR : word_t;
+    signal queueW : word_t;
+    signal pop    : bit_t;
+    signal push   : bit_t;
 
 begin
     -- reset is active-low
@@ -111,10 +138,30 @@ begin
             addr   => addr,
             dataR  => dataR,
             dataW  => dataW,
+            queueR => queueR,
+            queueW => queueW,
+            pop    => pop,
+            push   => push,
             en     => en,
             we     => we,
             start  => start,
             finish => finish
+        );
+
+    Queue : fifo_queue
+        generic map(
+            DATA_WIDTH => 32,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk => clk,
+            reset => reset,
+            pop => pop,
+            push => push,
+            din => queueW,
+            dout => queueR,
+            empty => open,
+            full => open
         );
 
     Memory : memory2
