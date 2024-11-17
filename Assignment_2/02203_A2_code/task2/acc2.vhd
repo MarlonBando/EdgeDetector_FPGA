@@ -70,7 +70,7 @@ architecture rtl of acc is
     signal half_select : bit_t := '0';
 
     constant TWO : signed(7 downto 0) := to_signed(2, 8);
-    constant THRESHOLD : unsigned(7 downto 0) := to_unsigned(255, 8); -- Example threshold value
+    constant THRESHOLD : unsigned(15 downto 0) := to_unsigned(255, 16);
 
     function min(a : unsigned; b : unsigned) return unsigned is
     begin
@@ -115,10 +115,13 @@ architecture rtl of acc is
 
     -- Function to compute dn (magnitude of gradient)
     function compute_dn(dx : in signed; dy : in signed) return std_logic_vector is
-        variable dn : std_logic_vector(15 downto 0);
+        variable dn : unsigned(15 downto 0);
     begin
-        dn := std_logic_vector(unsigned(abs(dx) + abs(dy)));
-        return std_logic_vector(dn(7 downto 0));
+        dn := unsigned(abs(dx) + abs(dy));
+        if dn > THRESHOLD then
+            dn := THRESHOLD; -- Clamp to threshold
+        end if;
+        return std_logic_vector(dn(7 downto 0)); -- Return 8-bit result
     end function;
 
 begin
