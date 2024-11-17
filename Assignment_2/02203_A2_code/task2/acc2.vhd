@@ -288,25 +288,29 @@ begin
 
 
                 dataW <= std_logic_vector(dn_3 & dn_2 & dn_1 & dn_0);
-                
+                addr <= std_logic_vector(to_unsigned(
+                 to_integer(row + 1) * 88 + to_integer(col - 1) + to_integer(MAX_ADDR), addr'length
+               ));                
                 -- Update col and row after the write operation
-                if row = MAX_ROW - 3 and col = MAX_COL - 1 then
+                if row = MAX_ROW - 3 and col = MAX_COL then
                     finish <= '1';
                     next_state <= idle;
-                     addr <= std_logic_vector(to_unsigned(
-                        to_integer(row + 1) * 88 + to_integer(col) + to_integer(MAX_ADDR), addr'length
-                        ));
-                elsif col = MAX_COL - 1 then
-                    addr <= std_logic_vector(to_unsigned(
-                            to_integer(row + 1) * 88 + to_integer(col) + to_integer(MAX_ADDR), addr'length
-                            ));
+                    -- addr <= std_logic_vector(to_unsigned(
+                   --    to_integer(row + 1) * 88 + to_integer(col) + to_integer(MAX_ADDR), addr'length
+                    --   ));
+                elsif col = MAX_COL then
+                  
+          
+                    --addr <= std_logic_vector(to_unsigned(
+                      --     to_integer(row + 1) * 88 + to_integer(col - 1) + to_integer(MAX_ADDR), addr'length
+                 --          ));
                     next_col <= (others => '0');
                     next_row <= row + 1;
                     next_state <= read_R0;
                 else
-                    addr <= std_logic_vector(to_unsigned(
-                            to_integer(row + 1) * 88 + to_integer(col - 1) + to_integer(MAX_ADDR), addr'length
-                            ));
+                  --  addr <= std_logic_vector(to_unsigned(
+                   --         to_integer(row + 1) * 88 + to_integer(col - 1) + to_integer(MAX_ADDR), addr'length
+                    --        ));
                     next_state <= compute_edge_FH;
                 end if;
                 
