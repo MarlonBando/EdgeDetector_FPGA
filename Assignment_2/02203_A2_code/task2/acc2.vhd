@@ -60,7 +60,7 @@ architecture rtl of acc is
     signal next_dataW, internal_dataW : word_t;
     signal next_addr, internal_addr : halfword_t;
     signal state, next_state : state_type;
-    signal dx_0, dx_1, dx_2, dx_3, dy_0, dy_1, dy_2, dy_3 : std_logic_vector(7 downto 0);
+    signal dx_0, dx_1, dx_2, dx_3, dy_0, dy_1, dy_2, dy_3 : signed(15 downto 0);
     signal dn_0, dn_1, dn_2, dn_3 : std_logic_vector(7 downto 0);
     signal pixel_matrix : pixel_matrix_type;
     signal computer_pixels : computed_pixels_type;
@@ -82,7 +82,7 @@ architecture rtl of acc is
     end function;
 
     -- Function to compute dx for a given row and column
-    function compute_dx(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return std_logic_vector is
+    function compute_dx(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return signed is
         variable dx : signed(15 downto 0);
         variable s13, s11, s23, s21, s33, s31 : integer;
     begin
@@ -94,11 +94,11 @@ architecture rtl of acc is
         s31 := to_integer(unsigned(pixel_matrix(row + 1, col - 1)));
 
         dx := to_signed((s13 - s11) + 2 * (s23 - s21) + (s33 - s31), 16);
-        return std_logic_vector(resize(dx, 8));
+        return dx;
     end function;
 
     -- Function to compute dy for a given row and column
-    function compute_dy(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return std_logic_vector is
+    function compute_dy(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return signed is
         variable dy : signed(15 downto 0);
         variable s11, s31, s12, s32, s13, s33 : integer;
     begin
@@ -110,13 +110,15 @@ architecture rtl of acc is
         s33 := to_integer(unsigned(pixel_matrix(row + 1, col + 1)));
 
         dy := to_signed((s11 - s31) + 2 * (s12 - s32) + (s13 - s33), 16);
-        return std_logic_vector(resize(dy, 8));
+        return dy;
     end function;
 
     -- Function to compute dn (magnitude of gradient)
-    function compute_dn(dx : in std_logic_vector; dy : in std_logic_vector) return std_logic_vector is
+    function compute_dn(dx : in signed; dy : in signed) return std_logic_vector is
+        variable dn : std_logic_vector(15 downto 0);
     begin
-        return std_logic_vector(min(unsigned(resize(abs(signed(dx)) + abs(signed(dy)), 8)), THRESHOLD));
+        dn := std_logic_vector(unsigned(abs(dx) + abs(dy)));
+        return std_logic_vector(dn(7 downto 0));
     end function;
 
 begin
@@ -205,22 +207,32 @@ begin
                     dx_1 <= compute_dx(pixel_matrix, 1, 1);
                     dy_1 <= compute_dy(pixel_matrix, 1, 1);
                     dn_1 <= compute_dn(dx_1, dy_1);
+                    
+                    --dn_1 <= pixel_matrix(1,1);
 
                     dx_2 <= compute_dx(pixel_matrix, 1, 2);
                     dy_2 <= compute_dy(pixel_matrix, 1, 2);
                     dn_2 <= compute_dn(dx_2, dy_2);
+                    
+                    --dn_2 <= pixel_matrix(1,2);
                 else
                     dx_0 <= compute_dx(pixel_matrix, 1, 2);
                     dy_0 <= compute_dy(pixel_matrix, 1, 2);
                     dn_0 <= compute_dn(dx_0, dy_0);
+                    
+                    --dn_0 <= pixel_matrix(1,2);
 
                     dx_1 <= compute_dx(pixel_matrix, 1, 3);
                     dy_1 <= compute_dy(pixel_matrix, 1, 3);
                     dn_1 <= compute_dn(dx_1, dy_1);
+                    
+                    --dn_1 <= pixel_matrix(1,3);
 
                     dx_2 <= compute_dx(pixel_matrix, 1, 4);
                     dy_2 <= compute_dy(pixel_matrix, 1, 4);
                     dn_2 <= compute_dn(dx_2, dy_2);
+                    
+                    --dn_2 <= pixel_matrix(1,4);
                 end if;
 
                 if col = MAX_COL - 1 then
@@ -256,7 +268,8 @@ begin
                 dx_3 <= compute_dx(pixel_matrix, 1, 1);
                 dy_3 <= compute_dy(pixel_matrix, 1, 1);
                 dn_3 <= compute_dn(dx_3, dy_3);
-
+                
+                --dn_3 <= pixel_matrix(1,1);
                 half_select <= '0';
                 next_state <= write;
 
