@@ -30,7 +30,8 @@ entity acc is
         MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25343, 16);
         IMG_WIDTH : unsigned(15 downto 0) := to_unsigned(352, 16);
         IMG_HEIGHT : unsigned(15 downto 0) := to_unsigned(288, 16);
-        LAST_BLOCK : unsigned(15 downto 0) := to_unsigned(352 * (288 - 3), 16)
+        ROW_ADDRESS_OFFSET : unsigned(15 downto 0) := to_unsigned(88, 16);
+        LAST_BLOCK : unsigned(15 downto 0) := to_unsigned(25080, 16)
     );
     port(
         clk    : in  bit_t;             -- The clock.
@@ -96,7 +97,6 @@ architecture rtl of acc is
     constant sobel_y : sobel_matrix := ((-1, -2, -1), (0, 0, 0), (1, 2, 1));
 
 
-
 begin
 
     cl : process(start, state, next_state, dataR, queueR, counter, cursor_x, cursor_y)
@@ -139,7 +139,7 @@ begin
                         next_counter <= counter + 1;
 
                     when "0001" =>
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);    
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);    
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));    
                         next_b_00_r1 <= dataR;
                         next_counter <= counter + 1;
@@ -150,7 +150,7 @@ begin
                         next_counter <= counter + 1;
                     
                     when "0011" =>
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_00_r2 <= dataR;
                         next_counter <= counter + 1;
@@ -161,7 +161,7 @@ begin
                         next_counter <= counter + 1;
                     
                     when "0101" =>
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_00_r3 <= dataR;
                         next_counter <= counter + 1;
@@ -172,7 +172,7 @@ begin
                         next_counter <= counter + 1;
 
                     when "0111" =>
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_10_r1 <= dataR;
                         next_counter <= counter + 1;
@@ -183,7 +183,7 @@ begin
                         next_counter <= counter + 1;
                     
                     when "1001" =>
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_10_r2 <= dataR;
                         next_counter <= counter + 1;
@@ -194,7 +194,7 @@ begin
                         next_counter <= counter + 1;
 
                     when "1011" =>
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) - to_unsigned(1, 16));
                         next_b_10_r3 <= dataR;
                         next_counter <= counter + 1;
@@ -205,7 +205,7 @@ begin
                         next_b_11_r3 <= dataR;
                         next_counter <= "0000";
                         next_state <= compute_and_write;
-
+                        en <= '0';
                     
                     when others =>
                         next_state <= idle;
@@ -219,42 +219,42 @@ begin
                     when "0000" =>
                         b_00_r1_cursor_y <= cursor_y;
                         next_counter <= counter + 1;
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         pop <= '1';
 
                     when "0001" =>
                         next_b_00_r1 <= queueR;
                         next_b_01_r1 <= dataR;
                         next_counter <= counter + 1;
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         pop <= '1';
                     
                     when "0010" =>
                         next_b_00_r2 <= queueR;
                         next_b_01_r2 <= dataR;
                         next_counter <= counter + 1;
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         pop <= '1';
                     
                     when "0011" =>
                         next_b_00_r3 <= queueR;
                         next_b_01_r3 <= dataR;
                         next_counter <= counter + 1;
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         pop <= '1';
                     
                     when "0100" =>
                         next_b_10_r1 <= queueR;
                         next_b_11_r1 <= dataR;
                         next_counter <= counter + 1;
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         pop <= '1';
                     
                     when "0101" =>
                         next_b_10_r2 <= queueR;
                         next_b_11_r2 <= dataR;
                         next_counter <= counter + 1;
-                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                        next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         pop <= '1';
                     
                     when "0110" =>
@@ -299,7 +299,7 @@ begin
                     computed_q_pixel_4 <= (others => '0');
                     computed_b_00_r3 <= (others => '0');
                 else
-                    next_cursor_y <= std_logic_vector(unsigned(cursor_y) + to_unsigned(3, 2) * IMG_WIDTH);
+                    next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET + ROW_ADDRESS_OFFSET + ROW_ADDRESS_OFFSET );
                     next_cursor_x <= std_logic_vector(unsigned(cursor_x) + to_unsigned(1, 16));
                     next_state <= read_first_column;
                 end if;
@@ -597,7 +597,7 @@ begin
                 we <= '1';
                 en <= '1';
                 next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
-                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
     
                 next_data_w <= computed_b_00_r1;
                 
@@ -608,7 +608,7 @@ begin
 
             when write1 =>
                 next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
-                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
 
                 we <= '1';
                 en <= '1';
@@ -623,7 +623,7 @@ begin
                 we <= '1';
                 en <= '1';
                 next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
-                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + IMG_WIDTH);
+                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                 next_data_w <= computed_b_00_r3;
 
                 push <= '1';
@@ -645,6 +645,7 @@ begin
                 first_column <= '0';
                 is_last_block <= '0';
                 next_state <= read_mixed;
+                next_counter <= (others => '0');
 
             when others =>
                 next_state <= idle;

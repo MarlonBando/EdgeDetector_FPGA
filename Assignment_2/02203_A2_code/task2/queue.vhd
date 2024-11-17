@@ -32,7 +32,6 @@ begin
     internal_full  <= '1' when length = QUEUE_DEPTH else '0';
     empty <= internal_empty;
     full <= internal_full;
-    dout <= (others => '0');
 
     process(clk)
     begin
