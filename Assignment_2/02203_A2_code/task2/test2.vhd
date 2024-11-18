@@ -59,10 +59,14 @@ architecture structure of testbench is
             addr   : out halfword_t;
             dataR  : in  word_t;
             dataW  : out word_t;
-            queueR : in word_t;
-            queueW : out word_t;
-            pop    : out bit_t;
-            push   : out bit_t;
+            bl_queueR : in word_t;
+            bl_queueW : out word_t;
+            pix_queueR : in byte_t;
+            pix_queueW : out byte_t;
+            bl_pop : out bit_t;
+            bl_push : out bit_t;
+            pix_pop : out bit_t;
+            pix_push : out bit_t;
             en     : out bit_t;
             we     : out bit_t;
             start  : in  bit_t;
@@ -104,6 +108,13 @@ architecture structure of testbench is
     signal pop    : bit_t;
     signal push   : bit_t;
 
+    signal bl_queueR : word_t;
+    signal bl_queueW : word_t;
+    signal pix_queueR : byte_t;
+    signal pix_queueW : byte_t;
+    signal bl_pop, bl_push : bit_t;
+    signal pix_pop, pix_push : bit_t;
+
 begin
     -- reset is active-low
     reset <= '1', '0' after 180 ns;
@@ -138,17 +149,21 @@ begin
             addr   => addr,
             dataR  => dataR,
             dataW  => dataW,
-            queueR => queueR,
-            queueW => queueW,
-            pop    => pop,
-            push   => push,
+            bl_queueR => bl_queueR,
+            bl_queueW => bl_queueW,
+            pix_queueR => pix_queueR,
+            pix_queueW => pix_queueW,
+            bl_pop => bl_pop,
+            bl_push => bl_push,
+            pix_pop => pix_pop,
+            pix_push => pix_push,
             en     => en,
             we     => we,
             start  => start,
             finish => finish
         );
 
-    Queue : fifo_queue
+    Queue_blocks : fifo_queue
         generic map(
             DATA_WIDTH => 32,
             QUEUE_DEPTH => 288
@@ -156,10 +171,26 @@ begin
         port map(
             clk => clk,
             reset => reset,
-            pop => pop,
-            push => push,
-            din => queueW,
-            dout => queueR,
+            pop => bl_pop,
+            push => bl_push,
+            din => bl_queueW,
+            dout => bl_queueR,
+            empty => open,
+            full => open
+        );
+
+    Queue_pixels : fifo_queue
+        generic map(
+            DATA_WIDTH => 8,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk => clk,
+            reset => reset,
+            pop => pix_pop,
+            push => pix_push,
+            din => pix_queueW,
+            dout => pix_queueR,
             empty => open,
             full => open
         );

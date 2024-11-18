@@ -45,10 +45,14 @@ architecture structure of top is
     signal finish   : bit_t;
     signal start_db : bit_t;
 
-    signal queueR : word_t;
-    signal queueW : word_t;
-    signal pop : bit_t;
-    signal push : bit_t;
+    signal bl_queueR : word_t;
+    signal bl_queueW : word_t;
+    signal pix_queueR : word_t;
+    signal pix_queueW : word_t;
+    signal bl_pop : bit_t;
+    signal bl_push : bit_t;
+    signal pix_pop : bit_t;
+    signal pix_push : bit_t;
 
     signal mem_enb   : std_logic;
     signal mem_web   : std_logic;
@@ -91,10 +95,14 @@ begin
             addr   => addr,
             dataR  => dataR,
             dataW  => dataW,
-            queueR => queueR,
-            queueW => queueW,
-            pop => pop,
-            push => push,
+            bl_queueR => bl_queueR,
+            bl_queueW => bl_queueW,
+            bl_pop => bl_pop,
+            bl_push => bl_push,
+            pix_pop => pix_pop,
+            pix_push => pix_push,
+            pix_queueR => pix_queueR,
+            pix_queueW => pix_queueW,
             en     => en,
             we     => we,
             start  => start_db,
@@ -165,11 +173,28 @@ begin
         port map(
             clk   => clk,
             reset => rst_s,
-            pop   => pop,
-            push  => push,
-            din   => dataW,
-            dout  => queueR,
+            pop   => bl_pop,
+            push  => bl_push,
+            din   => bl_queueW,
+            dout  => bl_queueR,
             empty => open,
             full  => open
         );
+
+    queue_inst_1 : entity work.fifo_queue
+        generic map(
+            DATA_WIDTH  => 8,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk   => clk,
+            reset => rst_s,
+            pop   => pix_pop,
+            push  => pix_push,
+            din   => pix_queueW,
+            dout  => pix_queueR,
+            empty => open,
+            full  => open
+        );
+
 end structure;
