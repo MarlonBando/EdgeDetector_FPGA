@@ -91,7 +91,6 @@ architecture rtl of acc is
 
     signal computed_b_00_r1, computed_b_00_r2, computed_b_00_r3, computed_b_10_r1 : word_t := (others => '0'); 
     signal computed_q_pixel_1, computed_q_pixel_2, computed_q_pixel_3, computed_q_pixel_4 : byte_t := (others => '0');
-    signal next_computed_q_pixel_1, next_computed_q_pixel_2, next_computed_q_pixel_3, next_computed_q_pixel_4 : byte_t := (others => '0');
 
     signal is_last_block : bit_t := '0';
     signal is_first_column : bit_t := '1';
@@ -132,11 +131,6 @@ begin
         addr <= reg_addr;
 
         next_is_last_column <= is_last_column;
-
-        next_computed_q_pixel_1 <= computed_q_pixel_1;
-        next_computed_q_pixel_2 <= computed_q_pixel_2; 
-        next_computed_q_pixel_3 <= computed_q_pixel_3;
-        next_computed_q_pixel_4 <= computed_q_pixel_4;
 
         case state is
 
@@ -266,7 +260,7 @@ begin
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         bl_pop <= '1';
                         pix_pop <= '1';
-                        next_computed_q_pixel_1 <= pix_queueR;
+                        computed_q_pixel_1 <= pix_queueR;
                     when "0100" =>
                         next_b_10_r1 <= bl_queueR;
                         next_b_11_r1 <= dataR;
@@ -274,7 +268,7 @@ begin
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         bl_pop <= '1';
                         pix_pop <= '1';
-                        next_computed_q_pixel_2 <= pix_queueR;
+                        computed_q_pixel_2 <= pix_queueR;
                     
                     when "0101" =>
                         next_b_10_r2 <= bl_queueR;
@@ -283,7 +277,7 @@ begin
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         bl_pop <= '1';
                         pix_pop <= '1';
-                        next_computed_q_pixel_3 <= pix_queueR;
+                        computed_q_pixel_3 <= pix_queueR;
                     
                     when "0110" =>
                         next_b_10_r3 <= bl_queueR;
@@ -292,7 +286,7 @@ begin
                         next_cursor_y <= b_00_r1_cursor_y;
                         bl_pop <= '0';
                         next_state <= compute_and_write;
-                        next_computed_q_pixel_4 <= pix_queueR;
+                        computed_q_pixel_4 <= pix_queueR;
                     
                     when others =>
                         next_state <= idle;
@@ -617,20 +611,18 @@ begin
                 
                 if is_last_column = '0' then
                     computed_b_00_r2(31 downto 24) <= not b_00_r2(31 downto 24);
-                    next_computed_q_pixel_2 <= not b_01_r2(7 downto 0);
                 end if;
             
 
                 if is_last_block = '0' or is_last_column = '1' then
-                    computed_b_00_r3(7 downto 0) <= computed_q_pixel_4;
+                    computed_b_10_r1(7 downto 0) <= computed_q_pixel_4;
                     computed_b_10_r1(15 downto 8) <= not b_10_r1(15 downto 8);
                     computed_b_10_r1(23 downto 16) <= not b_10_r1(23 downto 16);
                     
                     if is_last_column = '0' then
                         computed_b_10_r1(31 downto 24) <= not b_10_r1(31 downto 24);
                         computed_b_00_r3(31 downto 24) <= not b_01_r3(31 downto 24);
-                        next_computed_q_pixel_3 <= not b_10_r3(7 downto 0);
-                        next_computed_q_pixel_4 <= not b_11_r1(7 downto 0);
+                        computed_q_pixel_4 <= not b_11_r1(7 downto 0);
                     end if;
                     
                 end if;
@@ -662,7 +654,7 @@ begin
                 data_queue <= b_01_r2;
 
                 pix_push <= '1';
-                pix_queueW <= computed_q_pixel_2;
+                pix_queueW <= not b_01_r2(7 downto 0);
                 
                 next_state <= write2;   
                          
@@ -677,7 +669,7 @@ begin
                 data_queue <= b_01_r3;
 
                 pix_push <= '1';
-                pix_queueW <= computed_q_pixel_3;
+                pix_queueW <= not b_01_r3(7 downto 0);
                 
                 b_00_r1_cursor_x <= cursor_x;
                 b_00_r1_cursor_y <= next_cursor_y;
@@ -767,11 +759,6 @@ begin
                 b_11_r2 <= next_b_11_r2;
                 b_11_r3 <= next_b_11_r3;
                 is_last_column <= next_is_last_column;
-
-                computed_q_pixel_1 <= next_computed_q_pixel_1;
-                computed_q_pixel_2 <= next_computed_q_pixel_2;
-                computed_q_pixel_3 <= next_computed_q_pixel_3; 
-                computed_q_pixel_4 <= next_computed_q_pixel_4;
 
            end if;
        end if;
