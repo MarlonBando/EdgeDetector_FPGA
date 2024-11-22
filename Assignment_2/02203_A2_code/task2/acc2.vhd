@@ -72,7 +72,7 @@ architecture rtl of acc is
     signal matrix_first_word, matrix_second_word, matrix_third_word : word_t;
     signal matrix_first_word_addr, matrix_second_word_addr, matrix_third_word_addr : word_t;
     signal first_half_word, second_half_word,third_half_word : halfword_t;
-    signal first_read : bit_t;
+    signal is_column_first_read : bit_t;
 
     signal cursor_x, cursor_y : halfword_t := (others => '0');
     signal b_00_r1_cursor_x,b_00_r1_cursor_y : halfword_t := (others => '0');
@@ -90,7 +90,7 @@ architecture rtl of acc is
     signal next_b_11_r1, next_b_11_r2, next_b_11_r3 : word_t := (others => '0');
 
     signal computed_b_00_r1, computed_b_00_r2, computed_b_00_r3, computed_b_10_r1 : word_t := (others => '0'); 
-    signal computed_q_pixel_1, computed_q_pixel_2, computed_q_pixel_3, computed_q_pixel_4 : byte_t := (others => '0');
+    signal computed_q_pixel_1, computed_q_pixel_2, computed_q_pixel_3 : byte_t := (others => '0');
 
     signal is_last_block : bit_t := '0';
     signal is_first_column : bit_t := '1';
@@ -140,7 +140,7 @@ begin
                 end if;
             
             when read_first_column =>
-                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
+                addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
                 en <= '1';
                 
                 case counter is
@@ -217,7 +217,7 @@ begin
                         next_b_11_r3 <= dataR;
                         next_counter <= "0000";
                         next_state <= compute_and_write;
-                        en <= '0';
+                        en <= '1';
                     
                     when others =>
                         next_state <= idle;
@@ -260,7 +260,7 @@ begin
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         bl_pop <= '1';
                         pix_pop <= '1';
-                        computed_q_pixel_1 <= pix_queueR;
+                        
                     when "0100" =>
                         next_b_10_r1 <= bl_queueR;
                         next_b_11_r1 <= dataR;
@@ -268,7 +268,7 @@ begin
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         bl_pop <= '1';
                         pix_pop <= '1';
-                        computed_q_pixel_2 <= pix_queueR;
+                        computed_q_pixel_1 <= pix_queueR;
                     
                     when "0101" =>
                         next_b_10_r2 <= bl_queueR;
@@ -277,7 +277,7 @@ begin
                         next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
                         bl_pop <= '1';
                         pix_pop <= '1';
-                        computed_q_pixel_3 <= pix_queueR;
+                        computed_q_pixel_2 <= pix_queueR;
                     
                     when "0110" =>
                         next_b_10_r3 <= bl_queueR;
@@ -286,7 +286,7 @@ begin
                         next_cursor_y <= b_00_r1_cursor_y;
                         bl_pop <= '0';
                         next_state <= compute_and_write;
-                        computed_q_pixel_4 <= pix_queueR;
+                        computed_q_pixel_3 <= pix_queueR;
                     
                     when others =>
                         next_state <= idle;
@@ -294,6 +294,8 @@ begin
                 
                 
             when shift_registers =>
+                addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y));
+
                 next_b_00_r1 <= b_10_r1;
                 next_b_00_r2 <= b_10_r2;
                 next_b_00_r3 <= b_10_r3;
@@ -303,8 +305,9 @@ begin
                 next_b_01_r3 <= b_11_r3;
 
                 computed_b_00_r1 <= computed_b_10_r1;
-                computed_q_pixel_1 <= computed_q_pixel_4;
-
+                
+                is_column_first_read <= '0';
+                
                 en <= '1';
                 we <= '0';
                 
@@ -314,10 +317,8 @@ begin
                     is_last_block <= '1';
                     computed_b_10_r1 <= (others => '0');
                     computed_q_pixel_3 <= (others => '0');
-                    computed_q_pixel_4 <= (others => '0');
                     computed_b_00_r3 <= (others => '0');
                 else
-                    next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET + ROW_ADDRESS_OFFSET + ROW_ADDRESS_OFFSET );
                     if is_first_column = '1' then
                         next_counter <= "0111";
                         next_state <= read_first_column;
@@ -349,11 +350,6 @@ begin
 
                 -- Write the magnitude to the memory
                 -- dataW <= magnitude;
-
-
-                -- Write enable and address setup
-                en <= '1';
-                we <= '1';
 
                 -- next_b_00_r2(15 downto 8) <= std_logic_vector(to_unsigned(abs(
                 --     (
@@ -600,81 +596,90 @@ begin
                 -- next_b_10_r1(31 downto 24) <= not b_10_r1(31 downto 24);
                 -- next_b_11_r1(7 downto 0) <= not b_11_r1(7 downto 0);
 
+                computed_b_00_r1(7 downto 0) <= computed_q_pixel_1;
+                
                 computed_b_00_r2(7 downto 0) <= computed_q_pixel_2;
-                computed_b_00_r2(15 downto 8) <= not b_00_r2(15 downto 8);
-                computed_b_00_r2(23 downto 16) <= not b_00_r2(23 downto 16);
+                computed_b_00_r2(15 downto 8) <= b_00_r2(15 downto 8);
+                computed_b_00_r2(23 downto 16) <= b_00_r2(23 downto 16);
 
                 computed_b_00_r3(7 downto 0) <= computed_q_pixel_3;
-                computed_b_00_r3(15 downto 8) <= not b_00_r3(15 downto 8);
-                computed_b_00_r3(23 downto 16) <= not b_01_r3(23 downto 16);
+                computed_b_00_r3(15 downto 8) <= b_00_r3(15 downto 8);
+                computed_b_00_r3(23 downto 16) <= b_01_r3(23 downto 16);
                 
+                -- computed_b_00_r2(7 downto 0) <= b_00_r2;
+                -- computed_b_00_r3(7 downto 0) <= b_00_r2;
                 
                 if is_last_column = '0' then
-                    computed_b_00_r2(31 downto 24) <= not b_00_r2(31 downto 24);
+                    computed_b_00_r2(31 downto 24) <= b_00_r2(31 downto 24);
                 end if;
             
 
                 if is_last_block = '0' or is_last_column = '1' then
-                    computed_b_10_r1(7 downto 0) <= computed_q_pixel_4;
-                    computed_b_10_r1(15 downto 8) <= not b_10_r1(15 downto 8);
-                    computed_b_10_r1(23 downto 16) <= not b_10_r1(23 downto 16);
+                    computed_b_10_r1(15 downto 8) <= b_10_r1(15 downto 8);
+                    computed_b_10_r1(23 downto 16) <= b_10_r1(23 downto 16);
                     
                     if is_last_column = '0' then
-                        computed_b_10_r1(31 downto 24) <= not b_10_r1(31 downto 24);
-                        computed_b_00_r3(31 downto 24) <= not b_01_r3(31 downto 24);
-                        computed_q_pixel_4 <= not b_11_r1(7 downto 0);
+                        computed_b_00_r3(31 downto 24) <= b_01_r3(31 downto 24);
+                        computed_b_10_r1(31 downto 24) <= b_10_r1(31 downto 24);
                     end if;
                     
                 end if;
 
                 we <= '1';
                 en <= '1';
-                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y) + MAX_ADDR);
+                addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y) + MAX_ADDR);
                 next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
     
-                next_data_w <= computed_b_00_r1;
+                dataW <= computed_b_00_r1;
                 
                 bl_push <= '1';
                 data_queue <= b_01_r1;
 
                 pix_push <= '1';
-                pix_queueW <= computed_q_pixel_1;
+                pix_queueW <= b_00_r1(31 downto 24);
 
                 next_state <= write1;
 
             when write1 =>
-                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y) + MAX_ADDR) ;
+                addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y) + MAX_ADDR) ;
                 next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
 
                 we <= '1';
                 en <= '1';
-                next_data_w <= computed_b_00_r2;
+                dataW <= computed_b_00_r2;
 
                 bl_push <= '1';
                 data_queue <= b_01_r2;
 
                 pix_push <= '1';
-                pix_queueW <= not b_01_r2(7 downto 0);
+                pix_queueW <= b_01_r2(31 downto 24);
                 
                 next_state <= write2;   
                          
             when write2 =>
                 we <= '1';
                 en <= '1';
-                next_reg_addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y) + MAX_ADDR) ;
-                next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
-                next_data_w <= computed_b_00_r3;
+                addr <= std_logic_vector(unsigned(cursor_x) + unsigned(cursor_y) + MAX_ADDR) ;
+                
+                dataW <= computed_b_00_r3;
 
                 bl_push <= '1';
                 data_queue <= b_01_r3;
 
                 pix_push <= '1';
-                pix_queueW <= not b_01_r3(7 downto 0);
+                pix_queueW <= b_01_r3(31 downto 24);
                 
                 b_00_r1_cursor_x <= cursor_x;
                 b_00_r1_cursor_y <= next_cursor_y;
 
+                if is_column_first_read = '0' then
+                    next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET);
+                else
+                    next_cursor_y <= std_logic_vector(unsigned(cursor_y) + ROW_ADDRESS_OFFSET + ROW_ADDRESS_OFFSET + ROW_ADDRESS_OFFSET + ROW_ADDRESS_OFFSET);
+                end if;
+                
                 if is_last_block = '1' then 
+                    
                     next_state <= new_column;
                     if is_first_column = '1' then
                         next_cursor_x <= std_logic_vector(unsigned(cursor_x) + to_unsigned(2, 16));
@@ -692,6 +697,7 @@ begin
                 is_last_block <= '0';
                 next_state <= read_mixed;
                 next_counter <= (others => '0');
+                is_column_first_read <= '1';
                 
                 if unsigned(cursor_x) = unsigned(ROW_ADDRESS_OFFSET - 1) then
                     next_is_last_column <= '1';
