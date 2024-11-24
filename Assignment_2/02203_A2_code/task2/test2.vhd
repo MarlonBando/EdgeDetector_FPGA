@@ -197,7 +197,7 @@ begin
 
     Memory : memory2
         generic map(
-            load_file_name => "memlike.pgm"
+            load_file_name => "kaleidoscope.pgm"
         )
         -- Result is saved to: load_file_name & "_result.pgm"
         port map(
