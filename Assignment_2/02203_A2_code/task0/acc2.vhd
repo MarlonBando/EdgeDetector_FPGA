@@ -27,7 +27,7 @@ use work.types.all;
 
 entity acc is
     generic(
-        MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25343, 16)
+        MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25344, 16)
     );
     port(
         clk    : in  bit_t;             -- The clock.
@@ -49,24 +49,24 @@ end acc;
 architecture rtl of acc is
 
 -- All internal signals are defined here
-    type state_type is (idle, read, write, invert, done);
-    signal data_r, data_w, next_data_w : word_t;
-    signal next_reg_addr, reg_addr : halfword_t;
+    type state_type is (idle, read, write, done);
+    signal next_addr, internal_addr : halfword_t;
     signal state, next_state : state_type;
+    signal cnt, next_cnt : unsigned(15 downto 0) := (others => '0');
 
 begin
 
-    cl : process(start, state, next_state, next_reg_addr, data_r, data_w, next_data_w)
+    cl : process(start, state, next_state, cnt, dataR)
     begin
-        next_state <= state;
-        next_reg_addr <= reg_addr;
-        next_data_w <= data_w;
+        
         en <= '0';
         we <= '0';
-        addr <= reg_addr;
-        dataW <= data_w;
-        
-        
+        finish <= '0';
+        dataW <= (others => '0');
+        addr <= (others => '0');
+        next_state <= state;
+        next_cnt <= cnt;
+       
         case state is
 
             when idle =>
@@ -76,27 +76,31 @@ begin
 
             when read =>
                 en <= '1';
+                addr <= halfword_t(cnt);
                 next_state <= write;
 
             when write =>
                 en <= '1';
                 we <= '1';
                 
-                next_data_w <=  std_logic_vector(255 - unsigned(dataR(31 downto 24))) & 
-                                std_logic_vector(255 - unsigned(dataR(23 downto 16))) & 
-                                std_logic_vector(255 - unsigned(dataR(15 downto 8)))  &
-                                std_logic_vector(255 - unsigned(dataR( 7 downto 0)));
+                dataW <=  std_logic_vector(255 - unsigned(dataR(31 downto 24))) & 
+                          std_logic_vector(255 - unsigned(dataR(23 downto 16))) & 
+                          std_logic_vector(255 - unsigned(dataR(15 downto 8)))  &
+                          std_logic_vector(255 - unsigned(dataR( 7 downto 0)));
                 
-                next_reg_addr <= halfword_t(unsigned(reg_addr) + 1);
-                next_state <= read;
-                addr <= halfword_t(unsigned(reg_addr) + MAX_ADDR);
-                
-                
-                if (MAX_ADDR - unsigned(reg_addr) = 0) then
-                    finish <= '1';
-                    next_state <= idle;
-                end if;
 
+                next_state <= read;
+                addr <= halfword_t(cnt + MAX_ADDR);
+                next_cnt <= cnt + 1;
+                
+                if (cnt = (MAX_ADDR - 1)) then
+                    next_state <= done;
+                end if;
+            
+            when done =>
+                finish <= '1';
+                next_state <= idle;
+            
             when others =>
                 next_state <= idle;
             
@@ -112,14 +116,10 @@ begin
        if rising_edge(clk) then
            if reset = '1' then
                 state <= idle;
-                reg_addr <= (others => '0');
-                data_r <= (others => '0');
-                data_w <= (others => '0');
+                cnt <= (others => '0');
            else
                 state <= next_state;
-                reg_addr <= next_reg_addr;
-                data_w <= next_data_w;
-
+                cnt <= next_cnt;
            end if;
        end if;
    end process seq;
