@@ -109,7 +109,7 @@ architecture rtl of acc is
     function compute_dn(dx : in signed; dy : in signed) return std_logic_vector is
         variable dn : unsigned(15 downto 0);
     begin
-        dn := unsigned((abs(dx) + abs(dy)));
+        dn := unsigned((abs(dx) + abs(dy)) / 4);
         if dn > 255 then
             dn := THRESHOLD; -- Clamp to threshold
         end if;
@@ -217,35 +217,35 @@ begin
             when compute_dxdy_FH =>
                 if col < 1 then
                     -- Ignore first column (no padding in that implementation)
-                    next_dn_0 <= pixel_matrix(1, 0);
+                    --next_dn_0 <= (others => '0');
 
                     next_dx_1 <= compute_dx(pixel_matrix, 1, 1);
                     next_dy_1 <= compute_dy(pixel_matrix, 1, 1);
-                    next_dn_1 <= compute_dn(dx_1, dy_1);
+                    --next_dn_1 <= compute_dn(dx_1, dy_1);
                     
                     --dn_1 <= pixel_matrix(1,1);
 
                     next_dx_2 <= compute_dx(pixel_matrix, 1, 2);
                     next_dy_2 <= compute_dy(pixel_matrix, 1, 2);
-                    next_dn_2 <= compute_dn(dx_2, dy_2);
+                    --next_dn_2 <= compute_dn(dx_2, dy_2);
                     
                     --dn_2 <= pixel_matrix(1,2);
                 else
                     next_dx_0 <= compute_dx(pixel_matrix, 1, 2);
                     next_dy_0 <= compute_dy(pixel_matrix, 1, 2);
-                    next_dn_0 <= compute_dn(dx_0, dy_0);
+                    --next_dn_0 <= compute_dn(dx_0, dy_0);
                     
                     --dn_0 <= pixel_matrix(1,2);
 
                     next_dx_1 <= compute_dx(pixel_matrix, 1, 3);
                     next_dy_1 <= compute_dy(pixel_matrix, 1, 3);
-                    next_dn_1 <= compute_dn(dx_1, dy_1);
+                    --next_dn_1 <= compute_dn(dx_1, dy_1);
                     
                     --dn_1 <= pixel_matrix(1,3);
 
                     next_dx_2 <= compute_dx(pixel_matrix, 1, 4);
                     next_dy_2 <= compute_dy(pixel_matrix, 1, 4);
-                    next_dn_2 <= compute_dn(dx_2, dy_2);
+                    --next_dn_2 <= compute_dn(dx_2, dy_2);
                     
                     --dn_2 <= pixel_matrix(1,4);
                 end if;
@@ -256,7 +256,7 @@ begin
             when compute_dn_FH =>
                 if col < 1 then
                     -- Ignore first column (no padding in that implementation)
-                    next_dn_0 <= pixel_matrix(1, 0);
+                    next_dn_0 <= (others => '0');
                     next_dn_1 <= compute_dn(dx_1, dy_1);
                     next_dn_2 <= compute_dn(dx_2, dy_2);
                     --dn_1 <= pixel_matrix(1,1);
@@ -272,7 +272,7 @@ begin
                 end if;
             
                 if col = MAX_COL - 1 then
-                    next_dn_3 <= pixel_matrix(1, 5);
+                    next_dn_3 <= (others => '0');
                     next_state <= write;
                     next_col <= col + 1;
                 else
