@@ -98,8 +98,12 @@ begin
                 end if;
             
             when done =>
-                finish <= '1';
-                next_state <= idle;
+                if start = '1' then
+                    finish <= '1';
+                    next_state <= done;
+                else
+                    next_state <= idle;
+                end if;
             
             when others =>
                 next_state <= idle;
