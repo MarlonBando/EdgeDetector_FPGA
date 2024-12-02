@@ -26,12 +26,6 @@ use IEEE.numeric_std.all;
 use work.types.all;
 
 entity acc is
-    generic (
-        MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25344, 16);
-        MAX_ROW : unsigned(15 downto 0) := to_unsigned(288, 16);
-        MAX_COL : unsigned(15 downto 0) := to_unsigned(88, 16);
-        MAX_PIMAGE_ADDR : unsigned(15 downto 0) := to_unsigned(50688, 16)
-    );
     port (
         clk : in bit_t; -- The clock.
         reset : in bit_t; -- The reset signal. Active high.
@@ -72,44 +66,41 @@ architecture rtl of acc is
 
     constant THRESHOLD : unsigned(15 downto 0) := to_unsigned(255, 16);
 
+    constant MAX_ADDR : unsigned(15 downto 0) := to_unsigned(25344, 16);
+    constant MAX_ROW : unsigned(15 downto 0) := to_unsigned(288, 16);
+    constant MAX_COL : unsigned(15 downto 0) := to_unsigned(88, 16);
+    constant MAX_PIMAGE_ADDR : unsigned(15 downto 0) := to_unsigned(50688, 16);
 
-    -- Function to compute dx for a given row and column
-    function compute_dx(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return signed is
-        variable dx : signed(15 downto 0);
-        variable s13, s11, s23, s21, s33, s31 : signed(7 downto 0);
-    begin
-        s13 := signed(pixel_matrix(row - 1, col + 1));
-        s11 := signed(pixel_matrix(row - 1, col - 1));
-        s23 := signed(pixel_matrix(row, col + 1));
-        s21 := signed(pixel_matrix(row, col - 1));
-        s33 := signed(pixel_matrix(row + 1, col + 1));
-        s31 := signed(pixel_matrix(row + 1, col - 1));
-
-        dx := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31);
-        return dx;
-    end function;
-
-    -- Function to compute dy for a given row and column
-    function compute_dy(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return signed is
-        variable dy : signed(15 downto 0);
-        variable s11, s31, s12, s32, s13, s33 : signed(7 downto 0);
+    -- Function to compute dx or dy based on op
+    -- Applied operator sharing to reduce resources
+    function compute_grad(pixel_matrix : in pixel_matrix_type; row : integer; col : integer; op : std_logic) return signed is
+        variable gradient : signed(15 downto 0);
+        variable s11, s12, s13, s21, s22, s23, s31, s32, s33 : signed(7 downto 0);
     begin
         s11 := signed(pixel_matrix(row - 1, col - 1));
-        s31 := signed(pixel_matrix(row + 1, col - 1));
         s12 := signed(pixel_matrix(row - 1, col));
-        s32 := signed(pixel_matrix(row + 1, col));
         s13 := signed(pixel_matrix(row - 1, col + 1));
+        s21 := signed(pixel_matrix(row, col - 1));
+        s22 := signed(pixel_matrix(row, col));
+        s23 := signed(pixel_matrix(row, col + 1));
+        s31 := signed(pixel_matrix(row + 1, col - 1));
+        s32 := signed(pixel_matrix(row + 1, col));
         s33 := signed(pixel_matrix(row + 1, col + 1));
-
-        dy := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33);
-        return dy;
+        
+        -- If op 0 then compute dx, else compute dy
+        if op = '0' then
+            gradient := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31);
+        else
+            gradient := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33);
+        end if;
+        return gradient;
     end function;
 
     -- Function to compute dn (magnitude of gradient)
     function compute_dn(dx : in signed; dy : in signed) return std_logic_vector is
         variable dn : unsigned(15 downto 0);
     begin
-        dn := unsigned((abs(dx) + abs(dy)) / 4);
+        dn := unsigned((abs(dx) + abs(dy)) sll 2);
         if dn > 255 then
             dn := THRESHOLD; -- Clamp to threshold
         end if;
@@ -120,16 +111,15 @@ begin
 
     -- Update the cl process to use internal signals
     cl : process (start, state, next_state, col, row, half_select, dataR, pixel_matrix, dx_0, dy_0,
-                  dx_1, dy_1, dx_2, dy_2, dx_3, dy_3, dn_0, dn_1, dn_2, dn_3)
+        dx_1, dy_1, dx_2, dy_2, dx_3, dy_3, dn_0, dn_1, dn_2, dn_3)
     begin
 
-    
         en <= '0';
         we <= '0';
         finish <= '0';
         dataW <= (others => '0');
         addr <= (others => '0');
-        
+
         next_state <= state;
         next_col <= col;
         next_row <= row;
@@ -148,11 +138,10 @@ begin
         next_pixel_matrix <= pixel_matrix;
         next_half_select <= half_select;
 
-        
         case state is
 
             when idle =>
-                if start = '1'  then
+                if start = '1' then
                     next_state <= read_R0;
                 end if;
 
@@ -217,42 +206,44 @@ begin
             when compute_dxdy_FH =>
                 if col < 1 then
                     -- Ignore first column (no padding in that implementation)
-                    --next_dn_0 <= (others => '0');
+                    -- next_dn_0 <= (others => '0');
+                    -- We use opcode 0 for calculating the x gradient and 1 for calculating
+                    -- the y gradient
 
-                    next_dx_1 <= compute_dx(pixel_matrix, 1, 1);
-                    next_dy_1 <= compute_dy(pixel_matrix, 1, 1);
-                    --next_dn_1 <= compute_dn(dx_1, dy_1);
-                    
-                    --dn_1 <= pixel_matrix(1,1);
+                    next_dx_1 <= compute_grad(pixel_matrix, 1, 1, '0');
+                    next_dy_1 <= compute_grad(pixel_matrix, 1, 1, '1');
 
-                    next_dx_2 <= compute_dx(pixel_matrix, 1, 2);
-                    next_dy_2 <= compute_dy(pixel_matrix, 1, 2);
-                    --next_dn_2 <= compute_dn(dx_2, dy_2);
-                    
-                    --dn_2 <= pixel_matrix(1,2);
+                    -- next_dn_1 <= compute_dn(dx_1, dy_1);
+
+                    -- dn_1 <= pixel_matrix(1,1);
+
+                    next_dx_2 <= compute_grad(pixel_matrix, 1, 2, '0');
+                    next_dy_2 <= compute_grad(pixel_matrix, 1, 2, '1');
+                    -- next_dn_2 <= compute_dn(dx_2, dy_2);
+
+                    -- dn_2 <= pixel_matrix(1,2);
                 else
-                    next_dx_0 <= compute_dx(pixel_matrix, 1, 2);
-                    next_dy_0 <= compute_dy(pixel_matrix, 1, 2);
-                    --next_dn_0 <= compute_dn(dx_0, dy_0);
-                    
-                    --dn_0 <= pixel_matrix(1,2);
+                    next_dx_0 <= compute_grad(pixel_matrix, 1, 2, '0');
+                    next_dy_0 <= compute_grad(pixel_matrix, 1, 2, '1');
+                    -- next_dn_0 <= compute_dn(dx_0, dy_0);
 
-                    next_dx_1 <= compute_dx(pixel_matrix, 1, 3);
-                    next_dy_1 <= compute_dy(pixel_matrix, 1, 3);
-                    --next_dn_1 <= compute_dn(dx_1, dy_1);
-                    
-                    --dn_1 <= pixel_matrix(1,3);
+                    -- dn_0 <= pixel_matrix(1,2);
 
-                    next_dx_2 <= compute_dx(pixel_matrix, 1, 4);
-                    next_dy_2 <= compute_dy(pixel_matrix, 1, 4);
-                    --next_dn_2 <= compute_dn(dx_2, dy_2);
-                    
-                    --dn_2 <= pixel_matrix(1,4);
+                    next_dx_1 <= compute_grad(pixel_matrix, 1, 3, '0');
+                    next_dy_1 <= compute_grad(pixel_matrix, 1, 3, '1');
+                    -- next_dn_1 <= compute_dn(dx_1, dy_1);
+
+                    -- dn_1 <= pixel_matrix(1,3);
+
+                    next_dx_2 <= compute_grad(pixel_matrix, 1, 4, '0');
+                    next_dy_2 <= compute_grad(pixel_matrix, 1, 4, '1');
+                    -- next_dn_2 <= compute_dn(dx_2, dy_2);
+
+                    -- dn_2 <= pixel_matrix(1,4);
                 end if;
-                
+
                 next_state <= compute_dn_FH;
 
-            
             when compute_dn_FH =>
                 if col < 1 then
                     -- Ignore first column (no padding in that implementation)
@@ -265,12 +256,12 @@ begin
                     next_dn_0 <= compute_dn(dx_0, dy_0);
                     next_dn_1 <= compute_dn(dx_1, dy_1);
                     next_dn_2 <= compute_dn(dx_2, dy_2);
-                  
+
                     --dn_0 <= pixel_matrix(1,2);
                     --dn_1 <= pixel_matrix(1,3);
                     --dn_2 <= pixel_matrix(1,4);
                 end if;
-            
+
                 if col = MAX_COL - 1 then
                     next_dn_3 <= (others => '0');
                     next_state <= write;
@@ -301,18 +292,18 @@ begin
 
             when compute_dxdy_SH =>
                 -- Computing for second case
-                next_dx_3 <= compute_dx(pixel_matrix, 1, 1);
-                next_dy_3 <= compute_dy(pixel_matrix, 1, 1);
-                
+                next_dx_3 <= compute_grad(pixel_matrix, 1, 1, '0');
+                next_dy_3 <= compute_grad(pixel_matrix, 1, 1, '1');
+
                 next_state <= compute_dn_SH;
-            
+
             when compute_dn_SH =>
                 next_dn_3 <= compute_dn(dx_3, dy_3);
-                
+
                 --dn_3 <= pixel_matrix(1,1);
                 next_half_select <= '0';
                 next_state <= write;
-                
+
             when write =>
                 en <= '1';
                 we <= '1';
