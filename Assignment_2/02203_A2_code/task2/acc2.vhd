@@ -100,7 +100,7 @@ architecture rtl of acc is
     function compute_dn(dx : in signed; dy : in signed) return std_logic_vector is
         variable dn : unsigned(15 downto 0);
     begin
-        dn := unsigned((abs(dx) + abs(dy)) sll 2);
+        dn := unsigned((abs(dx) + abs(dy)) srl 2);
         if dn > 255 then
             dn := THRESHOLD; -- Clamp to threshold
         end if;
