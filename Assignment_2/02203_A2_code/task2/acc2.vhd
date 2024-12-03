@@ -74,27 +74,28 @@ architecture rtl of acc is
     -- Function to compute dx or dy based on op
     -- Applied operator sharing to reduce resources
     function compute_grad(pixel_matrix : in pixel_matrix_type; row : integer; col : integer; op : std_logic) return signed is
-        variable gradient : signed(15 downto 0);
-        variable s11, s12, s13, s21, s22, s23, s31, s32, s33 : signed(7 downto 0);
+        variable gradient : signed(23 downto 0); -- Gradient result
+        variable s11, s12, s13, s21, s22, s23, s31, s32, s33 : signed(11 downto 0); -- 12-bit signed values
     begin
-        s11 := signed(pixel_matrix(row - 1, col - 1));
-        s12 := signed(pixel_matrix(row - 1, col));
-        s13 := signed(pixel_matrix(row - 1, col + 1));
-        s21 := signed(pixel_matrix(row, col - 1));
-        s22 := signed(pixel_matrix(row, col));
-        s23 := signed(pixel_matrix(row, col + 1));
-        s31 := signed(pixel_matrix(row + 1, col - 1));
-        s32 := signed(pixel_matrix(row + 1, col));
-        s33 := signed(pixel_matrix(row + 1, col + 1));
-        
-        -- If op 0 then compute dx, else compute dy
+        -- Convert 8-bit pixel_matrix values to signed 12-bit values
+        s11 := signed("0000" & pixel_matrix(row - 1, col - 1));
+        s12 := signed("0000" & pixel_matrix(row - 1, col));
+        s13 := signed("0000" & pixel_matrix(row - 1, col + 1));
+        s21 := signed("0000" & pixel_matrix(row, col - 1));
+        s22 := signed("0000" & pixel_matrix(row, col));
+        s23 := signed("0000" & pixel_matrix(row, col + 1));
+        s31 := signed("0000" & pixel_matrix(row + 1, col - 1));
+        s32 := signed("0000" & pixel_matrix(row + 1, col));
+        s33 := signed("0000" & pixel_matrix(row + 1, col + 1));
+    
         if op = '0' then
-            gradient := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31);
+            gradient := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31); 
         else
-            gradient := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33);
+            gradient := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33); 
         end if;
-        return gradient;
+        return gradient(15 downto 0);
     end function;
+
 
     -- Function to compute dn (magnitude of gradient)
     function compute_dn(dx : in signed; dy : in signed) return std_logic_vector is
