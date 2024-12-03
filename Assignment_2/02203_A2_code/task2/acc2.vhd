@@ -265,17 +265,10 @@ begin
 
             when compute_edge_SH =>
                 -- Computing for second case
-                if col < 1 then
-                    next_pixel_matrix(2, 0) <= dataR(7 downto 0);
-                    next_pixel_matrix(2, 1) <= dataR(15 downto 8);
-                    next_pixel_matrix(2, 2) <= dataR(23 downto 16);
-                    next_pixel_matrix(2, 3) <= dataR(31 downto 24);
-                else
-                    next_pixel_matrix(2, 2) <= dataR(7 downto 0);
-                    next_pixel_matrix(2, 3) <= dataR(15 downto 8);
-                    next_pixel_matrix(2, 4) <= dataR(23 downto 16);
-                    next_pixel_matrix(2, 5) <= dataR(31 downto 24);
-                end if;
+                next_pixel_matrix(2, 2) <= dataR(7 downto 0);
+                next_pixel_matrix(2, 3) <= dataR(15 downto 8);
+                next_pixel_matrix(2, 4) <= dataR(23 downto 16);
+                next_pixel_matrix(2, 5) <= dataR(31 downto 24);
 
                 next_dx_3 <= compute_grad(next_pixel_matrix, 1, 1, '0');
                 next_dy_3 <= compute_grad(next_pixel_matrix, 1, 1, '1');
