@@ -62,6 +62,7 @@ architecture rtl of acc is
 
     signal half_select : bit_t := '0';
     signal next_half_select : bit_t := '0';
+    signal finish_internal : bit_t := '0';
 
     constant THRESHOLD : unsigned(15 downto 0) := to_unsigned(255, 16);
 
@@ -109,15 +110,15 @@ architecture rtl of acc is
 begin
 
     -- Update the cl process to use internal signals
-    cl : process (start, state, next_state, col, row, half_select, dataR, pixel_matrix, dx_0, dy_0,
-        dx_1, dy_1, dx_2, dy_2, dx_3, dy_3, dn_0, dn_1, dn_2, dn_3, last_state, next_col, next_row,
+    cl : process (start, state, next_state, last_state, col, row, half_select, dataR, pixel_matrix, dx_0, dy_0,
+        dx_1, dy_1, dx_2, dy_2, dx_3, dy_3, dn_0, dn_1, dn_2, dn_3, finish_internal, next_col, next_row,
         next_dx_0, next_dy_0, next_dx_1, next_dy_1, next_dx_2, next_dy_2, next_dx_3, next_dy_3,
         next_dn_0, next_dn_1, next_dn_2, next_dn_3, next_pixel_matrix, next_half_select)
     begin
 
         en <= '0';
         we <= '0';
-        finish <= '0';
+        finish <= finish_internal;
         dataW <= (others => '0');
         addr <= (others => '0');
 
@@ -138,6 +139,7 @@ begin
         next_dn_3 <= dn_3;
         next_pixel_matrix <= pixel_matrix;
         next_half_select <= half_select;
+
 
         case state is
 
@@ -251,6 +253,7 @@ begin
                 
                 next_col <= col + 1;
                 
+                
                 if col = MAX_COL - 1 then
                     next_dn_3 <= (others => '0');
                     next_state <= write;
@@ -334,6 +337,7 @@ begin
             dn_2 <= (others => '0');
             dn_3 <= (others => '0');
             pixel_matrix <= (others => (others => (others => '0')));
+            finish_internal <= '0'; -- Reset finish signal
         elsif rising_edge(clk) then
             state <= next_state;
             last_state <= state;
@@ -353,6 +357,10 @@ begin
             dn_2 <= next_dn_2;
             dn_3 <= next_dn_3;
             pixel_matrix <= next_pixel_matrix;
+            
+            if state = done then
+                finish_internal <= '1';
+            end if;
         end if;
 
     end process seq;
