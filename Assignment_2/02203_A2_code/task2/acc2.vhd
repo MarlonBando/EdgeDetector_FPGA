@@ -247,18 +247,13 @@ begin
                     next_dx_2 <= compute_grad(next_pixel_matrix, 1, 4, '0');
                     next_dy_2 <= compute_grad(next_pixel_matrix, 1, 4, '1');
                     next_dn_2 <= compute_dn(next_dx_2, next_dy_2);
-
-                  
-
                 end if;
                 
                 next_col <= col + 1;
                 
-                
                 if col = MAX_COL - 1 then
                     next_dn_3 <= (others => '0');
                     next_state <= write;
-                    --next_col <= col + 1;
                 else
                     next_half_select <= '1';
                     next_state <= read_R0;
