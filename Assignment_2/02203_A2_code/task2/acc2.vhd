@@ -87,20 +87,20 @@ architecture rtl of acc is
         s31 := signed("0000" & pixel_matrix(row + 1, col - 1));
         s32 := signed("0000" & pixel_matrix(row + 1, col));
         s33 := signed("0000" & pixel_matrix(row + 1, col + 1));
-    
+
         if op = '0' then
-            gradient := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31); 
+            gradient := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31);
         else
-            gradient := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33); 
+            gradient := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33);
         end if;
         return gradient(15 downto 0);
     end function;
-
 
     -- Function to compute dn (magnitude of gradient)
     function compute_dn(dx : in signed; dy : in signed) return std_logic_vector is
         variable dn : unsigned(15 downto 0);
     begin
+        -- Normalize by a factor of 4
         dn := unsigned((abs(dx) + abs(dy)) srl 2);
         if dn > 255 then
             dn := THRESHOLD; -- Clamp to threshold
@@ -141,7 +141,6 @@ begin
         next_pixel_matrix <= pixel_matrix;
         next_half_select <= half_select;
 
-
         case state is
 
             when idle =>
@@ -153,7 +152,7 @@ begin
                 en <= '1';
                 addr <= std_logic_vector(to_unsigned(to_integer(row) * 88 + to_integer(col), addr'length));
                 next_state <= read_R1;
-                
+
                 -- Shift matrix once compute_edge_FH has occured and half_select = 1
                 if half_select = '1' then
                     if (col - 1) < 1 then
@@ -177,7 +176,8 @@ begin
                 en <= '1';
                 addr <= std_logic_vector(to_unsigned(to_integer(row + 1) * 88 + to_integer(col), addr'length));
                 next_state <= read_R2;
-
+                -- Read the data for row 1, in case of first column then populate from 0 column
+                -- As the window slides, populate from offset 2
                 if col < 1 then
                     next_pixel_matrix(0, 0) <= dataR(7 downto 0);
                     next_pixel_matrix(0, 1) <= dataR(15 downto 8);
@@ -193,7 +193,7 @@ begin
             when read_R2 =>
                 en <= '1';
                 addr <= std_logic_vector(to_unsigned(to_integer(row + 2) * 88 + to_integer(col), addr'length));
-
+                -- Similar as before, this time for row 0
                 if col < 1 then
                     next_pixel_matrix(1, 0) <= dataR(7 downto 0);
                     next_pixel_matrix(1, 1) <= dataR(15 downto 8);
@@ -205,63 +205,71 @@ begin
                     next_pixel_matrix(1, 4) <= dataR(23 downto 16);
                     next_pixel_matrix(1, 5) <= dataR(31 downto 24);
                 end if;
-
+                -- half_select variable signifies if we are computing
+                -- first_half: (1,1) (1,2) when col = 0 else (1, 2), (1,3), (1,4)
+                -- second_half: (1,1)
                 if half_select = '0' then
                     next_state <= compute_edge_FH;
                 else
                     next_state <= compute_edge_SH;
                 end if;
 
-
             when compute_edge_FH =>
                 if col < 1 then
+                    -- If the previous state was read_R2, then 
+                    -- read the four first pixels of the last row needed for the kernel computation
                     if last_state = read_R2 then
                         next_pixel_matrix(2, 0) <= dataR(7 downto 0);
                         next_pixel_matrix(2, 1) <= dataR(15 downto 8);
                         next_pixel_matrix(2, 2) <= dataR(23 downto 16);
                         next_pixel_matrix(2, 3) <= dataR(31 downto 24);
                     end if;
+                    -- Ignore the first column
+                    -- (1, 0)
                     next_dn_0 <= (others => '0');
-                    
+                    -- (1, 1)
                     next_dx_1 <= compute_grad(next_pixel_matrix, 1, 1, '0');
                     next_dy_1 <= compute_grad(next_pixel_matrix, 1, 1, '1');
                     next_dn_1 <= compute_dn(next_dx_1, next_dy_1);
-                    
+                    -- (1, 2)
                     next_dx_2 <= compute_grad(next_pixel_matrix, 1, 2, '0');
                     next_dy_2 <= compute_grad(next_pixel_matrix, 1, 2, '1');
                     next_dn_2 <= compute_dn(next_dx_2, next_dy_2);
 
                 else
+                    -- If the previous state was read_R2, then 
+                    -- read the four next pixels (offset 2) of the last row needed for the kernel computation
                     if last_state = read_R2 then
                         next_pixel_matrix(2, 2) <= dataR(7 downto 0);
                         next_pixel_matrix(2, 3) <= dataR(15 downto 8);
                         next_pixel_matrix(2, 4) <= dataR(23 downto 16);
                         next_pixel_matrix(2, 5) <= dataR(31 downto 24);
                     end if;
-
+                    -- (1, 2)
                     next_dx_0 <= compute_grad(next_pixel_matrix, 1, 2, '0');
                     next_dy_0 <= compute_grad(next_pixel_matrix, 1, 2, '1');
                     next_dn_0 <= compute_dn(next_dx_0, next_dy_0);
-
+                    -- (1, 3)
                     next_dx_1 <= compute_grad(next_pixel_matrix, 1, 3, '0');
                     next_dy_1 <= compute_grad(next_pixel_matrix, 1, 3, '1');
                     next_dn_1 <= compute_dn(next_dx_1, next_dy_1);
-
+                    -- (1, 4)
                     next_dx_2 <= compute_grad(next_pixel_matrix, 1, 4, '0');
                     next_dy_2 <= compute_grad(next_pixel_matrix, 1, 4, '1');
                     next_dn_2 <= compute_dn(next_dx_2, next_dy_2);
                 end if;
-                
+                -- We increment the col to continue the calculations
                 next_col <= col + 1;
-                
-                
+
                 if col = MAX_COL - 1 then
+                    -- If it the last column, then we skip the calculation of the last gradient and
+                    -- resume to the write state
                     next_dn_3 <= (others => '0');
                     next_state <= write;
                 else
                     next_half_select <= '1';
+                    -- If not then we enable half select, and go back to reading
                     next_state <= read_R0;
-                    
                 end if;
 
             when compute_edge_SH =>
@@ -270,35 +278,41 @@ begin
                 next_pixel_matrix(2, 3) <= dataR(15 downto 8);
                 next_pixel_matrix(2, 4) <= dataR(23 downto 16);
                 next_pixel_matrix(2, 5) <= dataR(31 downto 24);
-
+                --- Compute one more pixel, as we write 4 by 4 to memory
                 next_dx_3 <= compute_grad(next_pixel_matrix, 1, 1, '0');
                 next_dy_3 <= compute_grad(next_pixel_matrix, 1, 1, '1');
                 next_dn_3 <= compute_dn(next_dx_3, next_dy_3);
-
+                -- Disable half-select, the next compute should be the first half of pixels
                 next_half_select <= '0';
                 next_state <= write;
 
             when write =>
+                -- Signals to enable writing
                 en <= '1';
                 we <= '1';
 
                 dataW <= dn_3 & dn_2 & dn_1 & dn_0;
+                -- We write at row + 1 as we have skipped the first row
                 addr <= std_logic_vector(to_unsigned(
                         to_integer(row + 1) * 88 + to_integer(col - 1) + to_integer(MAX_ADDR), addr'length
                         ));
-
+                -- We stop at MAX_ROW - 3, as we process the center pixels with the kernel and we skip the last row
                 if row = MAX_ROW - 3 and col = MAX_COL then
                     next_state <= done;
+                    -- When we have reached the end of a row (last column), we increment the current row and set back the col to 0
+                    -- We are ready to read a new row
                 elsif col = MAX_COL then
                     next_col <= (others => '0');
                     next_row <= row + 1;
                     next_state <= read_R0;
                 else
+                    -- If not at the end of a row or column, the continue with computing
                     next_state <= compute_edge_FH;
                 end if;
 
             when done =>
                 if start = '1' then
+                    -- We enable finish to singify the end of the process
                     finish <= '1';
                     next_state <= done;
                 else
@@ -351,7 +365,7 @@ begin
             dn_2 <= next_dn_2;
             dn_3 <= next_dn_3;
             pixel_matrix <= next_pixel_matrix;
-            
+
             if state = done then
                 finish_internal <= '1';
             end if;
