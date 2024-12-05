@@ -40,7 +40,7 @@ entity acc is
 end acc;
 
 --------------------------------------------------------------------------------
--- The desription of the accelerator.
+-- The description of the accelerator.
 --------------------------------------------------------------------------------
 
 architecture rtl of acc is
@@ -71,29 +71,36 @@ architecture rtl of acc is
     constant MAX_COL : unsigned(15 downto 0) := to_unsigned(88, 16);
     constant MAX_PIMAGE_ADDR : unsigned(15 downto 0) := to_unsigned(50688, 16);
 
-    -- Function to compute dx or dy based on op
-    -- Applied operator sharing to reduce resources
-    function compute_grad(pixel_matrix : in pixel_matrix_type; row : integer; col : integer; op : std_logic) return signed is
-        variable gradient : signed(23 downto 0); -- Gradient result
-        variable s11, s12, s13, s21, s22, s23, s31, s32, s33 : signed(11 downto 0); -- 12-bit signed values
+    -- Function to compute dx for a given row and column
+    function compute_dx(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return signed is
+        variable dx : signed(23 downto 0);
+        variable s13, s11, s23, s21, s33, s31 : signed(11 downto 0);
     begin
-        -- Convert 8-bit pixel_matrix values to signed 12-bit values
+        s13 := signed("0000" & pixel_matrix(row - 1, col + 1));
         s11 := signed("0000" & pixel_matrix(row - 1, col - 1));
+        s23 := signed("0000" & pixel_matrix(row, col + 1));
+        s21 := signed("0000" & pixel_matrix(row, col - 1));
+        s33 := signed("0000" & pixel_matrix(row + 1, col + 1));
+        s31 := signed("0000" & pixel_matrix(row + 1, col - 1));
+
+        dx := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31);
+        return dx(15 downto 0);
+    end function;
+
+    -- Function to compute dy for a given row and column
+    function compute_dy(pixel_matrix : in pixel_matrix_type; row : integer; col : integer) return signed is
+        variable dy : signed(23 downto 0);
+        variable s11, s31, s12, s32, s13, s33 : signed(11 downto 0);
+    begin
+        s11 := signed("0000" & pixel_matrix(row - 1, col - 1));
+        s31 := signed("0000" & pixel_matrix(row + 1, col - 1));
         s12 := signed("0000" & pixel_matrix(row - 1, col));
         s13 := signed("0000" & pixel_matrix(row - 1, col + 1));
-        s21 := signed("0000" & pixel_matrix(row, col - 1));
-        s22 := signed("0000" & pixel_matrix(row, col));
-        s23 := signed("0000" & pixel_matrix(row, col + 1));
-        s31 := signed("0000" & pixel_matrix(row + 1, col - 1));
         s32 := signed("0000" & pixel_matrix(row + 1, col));
         s33 := signed("0000" & pixel_matrix(row + 1, col + 1));
 
-        if op = '0' then
-            gradient := (s13 - s11) + 2 * (s23 - s21) + (s33 - s31);
-        else
-            gradient := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33);
-        end if;
-        return gradient(15 downto 0);
+        dy := (s11 - s31) + 2 * (s12 - s32) + (s13 - s33);
+        return dy(15 downto 0);
     end function;
 
     -- Function to compute dn (magnitude of gradient)
@@ -153,7 +160,7 @@ begin
                 addr <= std_logic_vector(to_unsigned(to_integer(row) * 88 + to_integer(col), addr'length));
                 next_state <= read_R1;
 
-                -- Shift matrix once compute_edge_FH has occured and half_select = 1
+                -- Shift matrix once compute_edge_FH has occurred and half_select = 1
                 if half_select = '1' then
                     if (col - 1) < 1 then
                         next_pixel_matrix(0, 0) <= pixel_matrix(0, 2);
@@ -228,12 +235,12 @@ begin
                     -- (1, 0)
                     next_dn_0 <= (others => '0');
                     -- (1, 1)
-                    next_dx_1 <= compute_grad(next_pixel_matrix, 1, 1, '0');
-                    next_dy_1 <= compute_grad(next_pixel_matrix, 1, 1, '1');
+                    next_dx_1 <= compute_dx(next_pixel_matrix, 1, 1);
+                    next_dy_1 <= compute_dy(next_pixel_matrix, 1, 1);
                     next_dn_1 <= compute_dn(next_dx_1, next_dy_1);
                     -- (1, 2)
-                    next_dx_2 <= compute_grad(next_pixel_matrix, 1, 2, '0');
-                    next_dy_2 <= compute_grad(next_pixel_matrix, 1, 2, '1');
+                    next_dx_2 <= compute_dx(next_pixel_matrix, 1, 2);
+                    next_dy_2 <= compute_dy(next_pixel_matrix, 1, 2);
                     next_dn_2 <= compute_dn(next_dx_2, next_dy_2);
 
                 else
@@ -246,23 +253,23 @@ begin
                         next_pixel_matrix(2, 5) <= dataR(31 downto 24);
                     end if;
                     -- (1, 2)
-                    next_dx_0 <= compute_grad(next_pixel_matrix, 1, 2, '0');
-                    next_dy_0 <= compute_grad(next_pixel_matrix, 1, 2, '1');
+                    next_dx_0 <= compute_dx(next_pixel_matrix, 1, 2);
+                    next_dy_0 <= compute_dy(next_pixel_matrix, 1, 2);
                     next_dn_0 <= compute_dn(next_dx_0, next_dy_0);
                     -- (1, 3)
-                    next_dx_1 <= compute_grad(next_pixel_matrix, 1, 3, '0');
-                    next_dy_1 <= compute_grad(next_pixel_matrix, 1, 3, '1');
+                    next_dx_1 <= compute_dx(next_pixel_matrix, 1, 3);
+                    next_dy_1 <= compute_dy(next_pixel_matrix, 1, 3);
                     next_dn_1 <= compute_dn(next_dx_1, next_dy_1);
                     -- (1, 4)
-                    next_dx_2 <= compute_grad(next_pixel_matrix, 1, 4, '0');
-                    next_dy_2 <= compute_grad(next_pixel_matrix, 1, 4, '1');
+                    next_dx_2 <= compute_dx(next_pixel_matrix, 1, 4);
+                    next_dy_2 <= compute_dy(next_pixel_matrix, 1, 4);
                     next_dn_2 <= compute_dn(next_dx_2, next_dy_2);
                 end if;
                 -- We increment the col to continue the calculations
                 next_col <= col + 1;
 
                 if col = MAX_COL - 1 then
-                    -- If it the last column, then we skip the calculation of the last gradient and
+                    -- If it is the last column, then we skip the calculation of the last gradient and
                     -- resume to the write state
                     next_dn_3 <= (others => '0');
                     next_state <= write;
@@ -279,8 +286,8 @@ begin
                 next_pixel_matrix(2, 4) <= dataR(23 downto 16);
                 next_pixel_matrix(2, 5) <= dataR(31 downto 24);
                 --- Compute one more pixel, as we write 4 by 4 to memory
-                next_dx_3 <= compute_grad(next_pixel_matrix, 1, 1, '0');
-                next_dy_3 <= compute_grad(next_pixel_matrix, 1, 1, '1');
+                next_dx_3 <= compute_dx(next_pixel_matrix, 1, 1);
+                next_dy_3 <= compute_dy(next_pixel_matrix, 1, 1);
                 next_dn_3 <= compute_dn(next_dx_3, next_dy_3);
                 -- Disable half-select, the next compute should be the first half of pixels
                 next_half_select <= '0';
@@ -306,13 +313,13 @@ begin
                     next_row <= row + 1;
                     next_state <= read_R0;
                 else
-                    -- If not at the end of a row or column, the continue with computing
+                    -- If not at the end of a row or column, then continue with computing
                     next_state <= compute_edge_FH;
                 end if;
 
             when done =>
                 if start = '1' then
-                    -- We enable finish to singify the end of the process
+                    -- We enable finish to signify the end of the process
                     finish <= '1';
                     next_state <= done;
                 else
