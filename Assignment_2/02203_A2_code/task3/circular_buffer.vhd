@@ -43,22 +43,29 @@ begin
                 queue <= (others => (others => '0'));
                 dout <= (others => '0');
             else
-                if push = '1' and internal_full = '0' then
+                if push = '1' and internal_full = '0' and pop = '1' and internal_empty = '0' then
+                    -- Simultaneous push and pop
+                    length <= length;  -- Length stays the same
                     queue(tail_ptr) <= din;
                     tail_ptr <= (tail_ptr + 1) mod QUEUE_DEPTH;
+                    head_ptr <= (head_ptr + 1) mod QUEUE_DEPTH;
+                elsif push = '1' and internal_full = '0' then
+                    -- Push only
                     length <= length + 1;
+                    queue(tail_ptr) <= din;
+                    tail_ptr <= (tail_ptr + 1) mod QUEUE_DEPTH;
                     -- If this is first element, make it visible immediately
                     if length = 0 then
                         dout <= din;
                     end if;
+                elsif pop = '1' and internal_empty = '0' then
+                    -- Pop only
+                    length <= length - 1;
+                    head_ptr <= (head_ptr + 1) mod QUEUE_DEPTH;
                 end if;
 
                 if internal_empty = '0' then
                     dout <= queue(head_ptr);
-                    if pop = '1' then
-                        head_ptr <= (head_ptr + 1) mod QUEUE_DEPTH;
-                        length <= length - 1;
-                    end if;
                 else
                     dout <= (others => '0');
                 end if;

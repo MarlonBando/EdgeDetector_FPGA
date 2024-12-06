@@ -183,7 +183,7 @@ begin
     fifo_queue_inst_1 : fifo_queue
         generic map(
             DATA_WIDTH => 32,
-            QUEUE_DEPTH => 288
+            QUEUE_DEPTH => 352
         )
         port map(
             clk   => clk,
@@ -199,7 +199,7 @@ begin
     fifo_queue_inst_2 : fifo_queue
         generic map(
             DATA_WIDTH => 32,
-            QUEUE_DEPTH => 288
+            QUEUE_DEPTH => 352
         )
         port map(
             clk   => clk,
