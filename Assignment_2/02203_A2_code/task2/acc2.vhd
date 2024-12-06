@@ -34,6 +34,14 @@ entity acc is
         dataW : out word_t; -- The data bus.
         en : out bit_t; -- Request signal for data.
         we : out bit_t; -- Read/Write signal for data.
+        push1 : out bit_t; -- Push signal for the first queue.
+        pop1 : out bit_t; -- Pop signal for the first queue.
+        push2 : out bit_t; -- Push signal for the second queue.
+        pop2 : out bit_t; -- Pop signal for the second queue.
+        queue1_R : in word_t := (others => '0'); -- data popped from the first queue
+        queue1_W : out word_t; -- data pushed to the second queue
+        queue2_R : in word_t := (others => '0'); -- data popped from the first queue
+        queue2_W : out word_t; -- data pushed to the second queue
         start : in bit_t;
         finish : out bit_t
     );
@@ -46,7 +54,7 @@ end acc;
 architecture rtl of acc is
 
     -- All internal signals are defined here
-    type state_type is (idle, read_R0, read_R1, read_R2, compute_edge_FH, compute_edge_SH, write, done);
+    type state_type is (idle, read_R0, read_R1, read_R2,read_in_parallel, compute_edge_FH, compute_edge_SH, write, done);
     type pixel_matrix_type is array (0 to 2, 0 to 5) of std_logic_vector(7 downto 0);
 
     signal state, next_state, last_state : state_type;
@@ -140,6 +148,11 @@ begin
         next_dn_3 <= dn_3;
         next_pixel_matrix <= pixel_matrix;
         next_half_select <= half_select;
+        
+        push2 <= '0';
+        push1 <= '0';
+        pop1 <= '0';
+        pop2 <= '0';
 
         case state is
 
@@ -193,6 +206,11 @@ begin
             when read_R2 =>
                 en <= '1';
                 addr <= std_logic_vector(to_unsigned(to_integer(row + 2) * 88 + to_integer(col), addr'length));
+                
+                -- Add to the first queue
+                push1 <= '1';
+                queue1_W <= dataR;
+
                 -- Similar as before, this time for row 0
                 if col < 1 then
                     next_pixel_matrix(1, 0) <= dataR(7 downto 0);
@@ -208,6 +226,60 @@ begin
                 -- half_select variable signifies if we are computing
                 -- first_half: (1,1) (1,2) when col = 0 else (1, 2), (1,3), (1,4)
                 -- second_half: (1,1)
+                if half_select = '0' then
+                    next_state <= compute_edge_FH;
+                else
+                    next_state <= compute_edge_SH;
+                end if;
+                
+            when read_in_parallel =>
+                en <= '1';
+                addr <= std_logic_vector(to_unsigned(to_integer(row + 3) * 88 + to_integer(col), addr'length));
+                
+                if col < 1 then
+                    next_pixel_matrix(0, 0) <= queue1_R(7 downto 0);
+                    next_pixel_matrix(0, 1) <= queue1_R(15 downto 8);
+                    next_pixel_matrix(0, 2) <= queue1_R(23 downto 16);
+                    next_pixel_matrix(0, 3) <= queue1_R(31 downto 24);
+
+                    next_pixel_matrix(1, 0) <= queue2_R(7 downto 0);
+                    next_pixel_matrix(1, 1) <= queue2_R(15 downto 8);
+                    next_pixel_matrix(1, 2) <= queue2_R(23 downto 16);
+                    next_pixel_matrix(1, 3) <= queue2_R(31 downto 24);
+                else
+                    next_pixel_matrix(0, 2) <= queue1_R(7 downto 0);
+                    next_pixel_matrix(0, 3) <= queue1_R(15 downto 8);
+                    next_pixel_matrix(0, 4) <= queue1_R(23 downto 16);
+                    next_pixel_matrix(0, 5) <= queue1_R(31 downto 24);
+
+                    next_pixel_matrix(1, 2) <= queue2_R(7 downto 0);
+                    next_pixel_matrix(1, 3) <= queue2_R(15 downto 8);
+                    next_pixel_matrix(1, 4) <= queue2_R(23 downto 16);
+                    next_pixel_matrix(1, 5) <= queue2_R(31 downto 24);
+                end if;
+
+                -- Shift matrix once compute_edge_FH has occured and half_select = 1
+                if half_select = '1' then
+                    if (col - 1) < 1 then
+                        next_pixel_matrix(0, 0) <= pixel_matrix(0, 2);
+                        next_pixel_matrix(1, 0) <= pixel_matrix(1, 2);
+                        next_pixel_matrix(2, 0) <= pixel_matrix(2, 2);
+                        next_pixel_matrix(0, 1) <= pixel_matrix(0, 3);
+                        next_pixel_matrix(1, 1) <= pixel_matrix(1, 3);
+                        next_pixel_matrix(2, 1) <= pixel_matrix(2, 3);
+                    else
+                        next_pixel_matrix(0, 0) <= pixel_matrix(0, 4);
+                        next_pixel_matrix(1, 0) <= pixel_matrix(1, 4);
+                        next_pixel_matrix(2, 0) <= pixel_matrix(2, 4);
+                        next_pixel_matrix(0, 1) <= pixel_matrix(0, 5);
+                        next_pixel_matrix(1, 1) <= pixel_matrix(1, 5);
+                        next_pixel_matrix(2, 1) <= pixel_matrix(2, 5);
+                    end if;
+                end if;
+
+                push1 <= '1';
+                queue1_W <= queue2_R;
+
                 if half_select = '0' then
                     next_state <= compute_edge_FH;
                 else
@@ -261,6 +333,9 @@ begin
                 -- We increment the col to continue the calculations
                 next_col <= col + 1;
 
+                push2 <= '1';
+                queue2_W <= dataR;
+
                 if col = MAX_COL - 1 then
                     -- If it the last column, then we skip the calculation of the last gradient and
                     -- resume to the write state
@@ -269,10 +344,20 @@ begin
                 else
                     next_half_select <= '1';
                     -- If not then we enable half select, and go back to reading
-                    next_state <= read_R0;
+                    if row /= 0 then
+                        next_state <= read_in_parallel;
+                        pop1 <= '1';
+                        pop2 <= '1';
+                    else
+                        next_state <= read_R0;
+                    end if;
                 end if;
 
             when compute_edge_SH =>
+                -- Add to the first queue
+                push2 <= '1';
+                queue2_W <= dataR;
+
                 -- Computing for second case
                 next_pixel_matrix(2, 2) <= dataR(7 downto 0);
                 next_pixel_matrix(2, 3) <= dataR(15 downto 8);
@@ -304,7 +389,13 @@ begin
                 elsif col = MAX_COL then
                     next_col <= (others => '0');
                     next_row <= row + 1;
-                    next_state <= read_R0;
+                    if row /= 0 then
+                        next_state <= read_in_parallel;
+                        pop1 <= '1';
+                        pop2 <= '1';
+                    else
+                        next_state <= read_R0;
+                     end if;
                 else
                     -- If not at the end of a row or column, the continue with computing
                     next_state <= compute_edge_FH;

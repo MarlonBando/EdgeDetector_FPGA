@@ -57,6 +57,20 @@ architecture structure of top is
     signal data_stream_out     : std_logic_vector(7 downto 0);
     signal data_stream_out_stb : std_logic;
 
+    signal queue1_din  : std_logic_vector(31 downto 0);
+    signal queue1_dout : std_logic_vector(31 downto 0);
+    signal queue1_empty : std_logic;
+    signal queue1_full : std_logic;
+    signal queue1_push : std_logic;
+    signal queue1_pop  : std_logic;
+
+    signal queue2_din  : std_logic_vector(31 downto 0);
+    signal queue2_dout : std_logic_vector(31 downto 0);
+    signal queue2_empty : std_logic;
+    signal queue2_full : std_logic;
+    signal queue2_push : std_logic;
+    signal queue2_pop  : std_logic;
+
 begin
     led <= finish;
 
@@ -79,17 +93,57 @@ begin
             reset_sync => rst_s
         );
 
+    fifo_queue_inst_1 : entity work.fifo_queue
+        generic map(
+            DATA_WIDTH => 32,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk   => clk,
+            reset => rst_s,
+            pop   => queue1_pop,
+            push  => queue1_push,
+            din   => queue1_din,
+            dout  => queue1_dout,
+            empty => queue1_empty,
+            full  => queue1_full
+        );
+
+    fifo_queue_inst_2 : entity work.fifo_queue
+        generic map(
+            DATA_WIDTH => 32,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk   => clk,
+            reset => rst_s,
+            pop   => queue2_pop,
+            push  => queue2_push,
+            din   => queue2_din,
+            dout  => queue2_dout,
+            empty => queue2_empty,
+            full  => queue2_full
+        );
+
     accelerator_inst_0 : entity work.acc
         port map(
-            clk    => clk,
-            reset  => rst_s,
-            addr   => addr,
-            dataR  => dataR,
-            dataW  => dataW,
-            en     => en,
-            we     => we,
-            start  => start_db,
-            finish => finish
+            clk      => clk,
+            reset    => rst_s,
+            addr     => addr,
+            dataR    => dataR,
+            dataW    => dataW,
+            en       => en,
+            we       => we,
+            start    => start_db,
+            finish   => finish,
+            push1    => queue1_push,
+            pop1     => queue1_pop,
+            push2    => queue2_push,
+            pop2     => queue2_pop,
+            queue1_R => queue1_dout,
+            queue1_W => queue1_din,
+            queue2_R => queue2_dout,
+            queue2_W => queue2_din
         );
 
     controller_inst_0 : entity work.controller

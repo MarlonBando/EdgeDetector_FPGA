@@ -62,7 +62,33 @@ architecture structure of testbench is
             en     : out bit_t;
             we     : out bit_t;
             start  : in  bit_t;
-            finish : out bit_t);
+            finish : out bit_t;
+            push1  : out std_logic;
+            pop1   : out std_logic;
+            push2  : out std_logic;
+            pop2   : out std_logic;
+            queue1_R : in std_logic_vector(31 downto 0);
+            queue1_W : out std_logic_vector(31 downto 0);
+            queue2_R : in std_logic_vector(31 downto 0);
+            queue2_W : out std_logic_vector(31 downto 0)
+        );
+    end component;
+
+    component fifo_queue is
+        generic(
+            DATA_WIDTH : integer := 32;
+            QUEUE_DEPTH : integer := 288
+        );
+        port (
+            clk : in std_logic;
+            reset : in std_logic;
+            pop : in std_logic;
+            push: in std_logic;
+            din : in std_logic_vector(DATA_WIDTH-1 downto 0);
+            dout: out std_logic_vector(DATA_WIDTH-1 downto 0);
+            empty : out std_logic;
+            full : out std_logic
+        );
     end component;
 
     signal StopSimulation : bit_t := '0';
@@ -76,6 +102,20 @@ architecture structure of testbench is
     signal we     : bit_t;
     signal start  : bit_t;
     signal finish : bit_t;
+
+    signal queue1_din  : std_logic_vector(31 downto 0);
+    signal queue1_dout : std_logic_vector(31 downto 0);
+    signal queue1_empty : std_logic;
+    signal queue1_full : std_logic;
+    signal queue1_push : std_logic;
+    signal queue1_pop  : std_logic;
+
+    signal queue2_din  : std_logic_vector(31 downto 0);
+    signal queue2_dout : std_logic_vector(31 downto 0);
+    signal queue2_empty : std_logic;
+    signal queue2_full : std_logic;
+    signal queue2_push : std_logic;
+    signal queue2_pop  : std_logic;
 
 begin
     -- reset is active-low
@@ -106,15 +146,23 @@ begin
 
     Accelerator : acc
         port map(
-            clk    => clk,
-            reset  => reset,
-            addr   => addr,
-            dataR  => dataR,
-            dataW  => dataW,
-            en     => en,
-            we     => we,
-            start  => start,
-            finish => finish
+            clk      => clk,
+            reset    => reset,
+            addr     => addr,
+            dataR    => dataR,
+            dataW    => dataW,
+            en       => en,
+            we       => we,
+            start    => start,
+            finish   => finish,
+            push1    => queue1_push,
+            pop1     => queue1_pop,
+            push2    => queue2_push,
+            pop2     => queue2_pop,
+            queue1_R => queue1_dout,
+            queue1_W => queue1_din,
+            queue2_R => queue2_dout,
+            queue2_W => queue2_din
         );
 
     Memory : memory2
@@ -130,6 +178,38 @@ begin
             dataW      => dataW,
             dataR      => dataR,
             dump_image => finish
+        );
+
+    fifo_queue_inst_1 : fifo_queue
+        generic map(
+            DATA_WIDTH => 32,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk   => clk,
+            reset => reset,
+            pop   => queue1_pop,
+            push  => queue1_push,
+            din   => queue1_din,
+            dout  => queue1_dout,
+            empty => queue1_empty,
+            full  => queue1_full
+        );
+
+    fifo_queue_inst_2 : fifo_queue
+        generic map(
+            DATA_WIDTH => 32,
+            QUEUE_DEPTH => 288
+        )
+        port map(
+            clk   => clk,
+            reset => reset,
+            pop   => queue2_pop,
+            push  => queue2_push,
+            din   => queue2_din,
+            dout  => queue2_dout,
+            empty => queue2_empty,
+            full  => queue2_full
         );
 
 end structure;
