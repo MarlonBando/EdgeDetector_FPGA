@@ -1,6 +1,6 @@
 # Edge Detection and Pixel Inversion Project
 
-This project demonstrates an implementation of an edge detector and a pixel inversion system. These systems are used to process images on FPGA hardware, specifically the Nexys 4 DDR board. All details about the implementation and design are documented in the attached PDF report.
+This project implements an edge detector and a pixel inversion system. These systems are used to process images on FPGA hardware, specifically the Nexys 4 DDR board. All details about the implementation and design are documented in the attached PDF report.
 
 ## What is an Edge Detector?
 
